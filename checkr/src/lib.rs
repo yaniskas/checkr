@@ -53,6 +53,7 @@ pub mod pg;
 pub mod pv;
 pub mod security;
 pub mod sign;
+pub mod model_checking;
 
 #[derive(Debug, Default)]
 pub struct ProgramGenerationBuilder {

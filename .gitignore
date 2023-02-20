@@ -1,3 +1,5 @@
 /target
 /gcmd
 .docker-cache/
+
+inspectify/wasm/target
