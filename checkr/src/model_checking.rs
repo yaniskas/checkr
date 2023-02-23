@@ -26,20 +26,21 @@ pub fn stuck_states(
     to_explore.push_back(initial_configuration);
 
     while let Some(cstate) = to_explore.pop_front() {
+        if search_depth == 0 { break };
+
         if visited.contains(&cstate) { continue };
 
         visited.insert(cstate.clone());
 
         let potential_next_states = next_states(pg, &cstate);
 
-        if potential_next_states.is_empty() {
-            stuck_states.push(cstate);
-        } else {
+        if !potential_next_states.is_empty() {
             to_explore.extend(potential_next_states.into_iter());
+        } else if cstate.node != Node::End {
+            stuck_states.push(cstate);
         }
 
         search_depth -= 1;
-        if search_depth == 0 { break };
     }
 
     stuck_states
