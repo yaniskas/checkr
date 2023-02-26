@@ -16,6 +16,12 @@ impl InterpreterMemory {
     }
 }
 
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub struct Configuration<N = Node> {
+    pub node: N,
+    pub memory: InterpreterMemory
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "Case")]
 pub enum ProgramState {
@@ -41,17 +47,31 @@ impl<A> ProgramTrace<A> {
     }
 }
 
-pub fn next_states(pg: &ProgramGraph, state: &ProgramTrace) -> Vec<ProgramTrace> {
+impl<T: Clone> ProgramTrace<T> {
+    pub fn to_configuration(&self) -> Configuration<T> {
+        Configuration {
+            node: self.node.clone(),
+            memory: self.memory.clone()
+        }
+    }
+}
+
+pub fn next_configurations(pg: &ProgramGraph, state: &Configuration) -> Vec<(Action, Configuration)> {
     pg.outgoing(state.node).iter().map(|e| {
-        e.1.semantics(&state.memory)
-            .map(|m| ProgramTrace {
-                state: ProgramState::Running,
+        let configuration = e.1.semantics(&state.memory)
+            .map(|m| Configuration {
                 node: e.2,
                 memory: m,
             })
-            .ok()
-        }
-    ).filter_map(|e| e).collect()
+            .ok();
+        (
+            e.1.clone(), 
+            configuration
+        )
+    })
+    .filter(|e| { e.1.is_some() })
+    .map(|e| { (e.0, e.1.unwrap()) })
+    .collect()
 }
 
 impl Interpreter {
@@ -68,11 +88,15 @@ impl Interpreter {
         let mut trace = vec![state.clone()];
 
         while state.state == ProgramState::Running {
-            let potential_next_states = next_states(pg, &state);
+            let potential_next_configurations = next_configurations(pg, &state.to_configuration());
 
-            let next_state = match potential_next_states.into_iter().next() {
-                Some(s) => s,
-                None if state.node == Node::End => ProgramTrace { state: ProgramState::Terminated, ..state},
+            let next_state = match potential_next_configurations.into_iter().next() {
+                Some(s) => ProgramTrace {
+                    state: ProgramState::Running,
+                    node: s.1.node,
+                    memory: s.1.memory
+                },
+                None if state.node == Node::End => ProgramTrace { state: ProgramState::Terminated, ..state },
                 None => ProgramTrace { state: ProgramState::Stuck, ..state}
             };
             state = next_state;

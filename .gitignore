@@ -1,5 +1,6 @@
 /target
 /gcmd
 .docker-cache/
+/graphviz_output
 
 inspectify/wasm/target

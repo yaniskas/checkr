@@ -1,10 +1,13 @@
-use std::{io::{self, Write}, collections::BTreeMap, str::FromStr};
+use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands}, model_checking::{ModelCheckMemory, stuck_states}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands}, model_checking::{ModelCheckMemory, check_model}};
 
 fn main() {
-    let program = input_msg("Please enter a GCL program: ");
-    let commands = parse::parse_commands(&program).unwrap();
+    let commands = ask_for_with_parser(
+        "Please enter a GCL program: ", 
+        "Please enter a valid program", 
+        parse::parse_commands
+    );
     let graph = ProgramGraph::new(Determinism::NonDeterministic, &commands);
 
     let memory = ask_for_memory_assignment(commands);
@@ -14,7 +17,9 @@ fn main() {
         "Please enter a valid positive number"
     );
 
-    let stuck_states = stuck_states(search_depth, memory, &graph);
+    let result = check_model(search_depth, memory, &graph);
+    let stuck_states = result.stuck_states;
+    let transition_system = result.transition_system;
 
     if !stuck_states.is_empty() {
         println!("Stuck states:");
@@ -24,11 +29,32 @@ fn main() {
     } else {
         println!("No stuck states found");
     }
+
+    let graphviz_edges = transition_system.iter()
+        .flat_map(|entry| {
+            entry.1.iter().map(move |edge| {
+                format!("\"{}\" -> \"{}\" [label = \"{}\"]", entry.0, edge.1, edge.0)
+            })
+        }).collect::<Vec<_>>();
+    let graphviz_edges_str = graphviz_edges.join("\n").replace("▷", "Start").replace("◀", "End");
+
+    println!("Transition system edges:");
+    println!("{}", graphviz_edges_str);
+
+    let graphviz_output =
+        "digraph transition_system {\n".to_string()
+        + &graphviz_edges_str
+        + "}";
+    fs::write("graphviz_output/transition_system.dot", graphviz_output).unwrap();
 }
 
 fn ask_for<T: FromStr>(msg: &str, failmsg: &str) -> T {
+    ask_for_with_parser(msg, failmsg, FromStr::from_str)
+}
+
+fn ask_for_with_parser<T, E>(msg: &str, failmsg: &str, parser: impl Fn(&str) -> Result<T, E>) -> T {
     loop {
-        match input_msg(msg).trim().parse::<T>() {
+        match parser(input_msg(msg).trim()) {
             Ok(val) => return val,
             Err(_) => {
                 println!("{failmsg}");
@@ -59,7 +85,7 @@ fn ask_for_memory_assignment(commands: Commands) -> ModelCheckMemory {
                 let Array(name) = &wrapped_name;
 
                 let desired_value: Vec<i64> = loop {
-                    let input = input_msg("Please input an initial assignment for array {name}, with values separated by commas: ");
+                    let input = input_msg(&format!("Please input an initial assignment for array {name}, with values separated by commas: "));
                     match try_parse_array(&input) {
                         Ok(ass) => break ass,
                         Err(_) => {
