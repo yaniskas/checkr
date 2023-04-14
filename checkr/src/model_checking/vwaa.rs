@@ -1,18 +1,20 @@
-use std::{collections::{HashSet, HashMap}, rc::Rc, fmt::Display, hash::Hash};
+use std::{collections::{HashSet, HashMap, BTreeSet}, rc::Rc, fmt::Display, hash::Hash};
 
 use crate::ast::BExpr;
 
 use super::ltl::{NegativeNormalLTL, temporal_subformulae, until_subformulae};
+use super::traits::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VWAA {
-    states: HashSet<NegativeNormalLTL>,
-    delta: HashMap<NegativeNormalLTL, HashSet<VWAATransitionResult>>,
-    initial_states: HashSet<NegativeNormalLTL>,
-    final_states: HashSet<NegativeNormalLTL>
+    pub states: HashSet<NegativeNormalLTL>,
+    pub delta: HashMap<NegativeNormalLTL, HashSet<VWAATransitionResult>>,
+    pub initial_states: HashSet<NegativeNormalLTL>,
+    pub final_states: HashSet<NegativeNormalLTL>
 }
 
 impl VWAA {
+    // Fast pg. 58 Step 1
     pub fn from_ltl(formula: &NegativeNormalLTL) -> VWAA {
         let states = temporal_subformulae(formula);
         let mut delta = HashMap::new();
@@ -25,10 +27,10 @@ impl VWAA {
         VWAA {states, delta, initial_states, final_states}
     }
 
-    pub fn delta(&self) -> &HashMap<NegativeNormalLTL, HashSet<VWAATransitionResult>> { &self.delta }
+    pub fn delta(&self) -> &HashMap<NegativeNormalLTL, HashSet<VWAATransitionResult>> {&self.delta}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Symbol {
     Atomic(BExpr),
     NegAtomic(BExpr)
@@ -43,41 +45,45 @@ impl Display for Symbol {
     }
 }
 
-trait Conjuct {
+// Used in the circle_x operator
+pub trait Conjuct {
     fn conjuct(&self, other: &Self) -> Self;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SymbolConjunction {
     TT,
-    Conjunction(Vec<Symbol>)
+    Conjunction(BTreeSet<Symbol>)
 }
 
 impl Conjuct for SymbolConjunction {
     fn conjuct(&self, other: &SymbolConjunction) -> SymbolConjunction {
         match self {
             SymbolConjunction::TT => other.clone(),
-            SymbolConjunction::Conjunction(vec) => {
-                let mut res: Vec<Symbol> = Vec::new();
-                res.extend(vec.clone().into_iter());
+            SymbolConjunction::Conjunction(set) => {
                 match other {
-                    SymbolConjunction::TT => {},
-                    SymbolConjunction::Conjunction(vec2) => res.extend(vec2.clone().into_iter())
+                    SymbolConjunction::TT => SymbolConjunction::Conjunction(set.clone()),
+                    SymbolConjunction::Conjunction(set2) => SymbolConjunction::Conjunction(set.clone().add_many(set2.clone()))
                 }
-                SymbolConjunction::Conjunction(res)
             }
         }
     }
 }
 
-impl Conjuct for Vec<NegativeNormalLTL> {
-    fn conjuct(&self, other: &Self) -> Self {
-        match &self[..] {
-            [NegativeNormalLTL::True] => other.clone(),
-            _ => {
-                match &other[..] {
-                    [NegativeNormalLTL::True] => self.clone(),
-                    _ => self.clone().add_many(other.clone())
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LTLConjunction {
+    TT,
+    Conjunction(BTreeSet<NegativeNormalLTL>),
+}
+
+impl Conjuct for LTLConjunction {
+    fn conjuct(&self, other: &LTLConjunction) -> LTLConjunction {
+        match self {
+            LTLConjunction::TT => other.clone(),
+            LTLConjunction::Conjunction(set) => {
+                match other {
+                    LTLConjunction::TT => LTLConjunction::Conjunction(set.clone()),
+                    LTLConjunction::Conjunction(set2) => LTLConjunction::Conjunction(set.clone().add_many(set2.clone()))
                 }
             }
         }
@@ -88,27 +94,31 @@ impl Display for SymbolConjunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SymbolConjunction::TT => write!(f, "tt"),
-            SymbolConjunction::Conjunction(vec) => {
-                let str = vec.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(" && ");
+            SymbolConjunction::Conjunction(set) => {
+                let str = set.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(" && ");
                 write!(f, "{str}")
             }
         }
     }
 }
 
-type LTLConjunction = Vec<NegativeNormalLTL>;
-type VWAATransitionResult = (SymbolConjunction, LTLConjunction);
+pub type VWAATransitionResult = (SymbolConjunction, LTLConjunction);
 
-fn circle_x(j1: &HashSet<VWAATransitionResult>, j2: &HashSet<VWAATransitionResult>) -> HashSet<VWAATransitionResult> {
+// Fast pg. 58 Definition 4
+pub fn circle_x(j1: &HashSet<VWAATransitionResult>, j2: &HashSet<VWAATransitionResult>) -> HashSet<VWAATransitionResult> {
     let mut res = HashSet::new();
     for (alpha1, e1) in j1 {
         for (alpha2, e2) in j2 {
+            if *alpha1 == SymbolConjunction::TT && *alpha2 == SymbolConjunction::TT {
+                println!("Inserting {:?}", (alpha1.conjuct(alpha2), e1.conjuct(e2)));
+            }
             res.insert((alpha1.conjuct(alpha2), e1.conjuct(e2)));
         }
     }
     res
 }
 
+// Fast pg. 58 Definition 4
 fn bar(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
     let mut res = HashSet::new();
     match formula {
@@ -119,7 +129,10 @@ fn bar(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
             let barf2 = bar(f2);
             for e1 in bar(f1) {
                 for e2 in &barf2 {
-                    res.insert(NegativeNormalLTL::And(Rc::new(e1.clone()), Rc::new(e2.clone())));
+                    // ?
+                    res.insert(e1.clone());
+                    res.insert(e2.clone());
+                    // res.insert(NegativeNormalLTL::And(Rc::new(e1.clone()), Rc::new(e2.clone())));
                 }
             }
         }
@@ -132,32 +145,33 @@ fn bar(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
     res
 }
 
+// Fast pg. 58 Step 1 definition of delta
 fn find_delta(formula: &NegativeNormalLTL) -> HashSet<VWAATransitionResult> {
     let mut res = HashSet::new();
     match formula {
         NegativeNormalLTL::True => {
-            res.insert((SymbolConjunction::TT, vec! [NegativeNormalLTL::True]));
+            res.insert((SymbolConjunction::TT, LTLConjunction::TT));
         }
         NegativeNormalLTL::False => {}
         NegativeNormalLTL::Atomic(p) => {
-            res.insert((SymbolConjunction::Conjunction(vec! [Symbol::Atomic(p.clone())]), vec! [NegativeNormalLTL::True]));
+            res.insert((SymbolConjunction::Conjunction(BTreeSet::singleton(Symbol::Atomic(p.clone()))), LTLConjunction::TT));
         }
         NegativeNormalLTL::NegAtomic(p) => {
-            res.insert((SymbolConjunction::Conjunction(vec! [Symbol::NegAtomic(p.clone())]), vec! [NegativeNormalLTL::True]));
+            res.insert((SymbolConjunction::Conjunction(BTreeSet::singleton(Symbol::NegAtomic(p.clone()))), LTLConjunction::TT));
         }
         NegativeNormalLTL::Next(f) => {
-            res.extend(bar(f).into_iter().map(|e| (SymbolConjunction::TT, vec! [e])));
+            res.extend(bar(f).into_iter().map(|e| (SymbolConjunction::TT, LTLConjunction::Conjunction(BTreeSet::singleton(e)))));
         }
         NegativeNormalLTL::Until(f1, f2) => {
             res.extend(find_delta(f2));
             let mut operand = HashSet::new();
-            operand.insert((SymbolConjunction::TT, vec! [NegativeNormalLTL::Until(Rc::clone(f1), Rc::clone(f2))]));
+            operand.insert((SymbolConjunction::TT, LTLConjunction::Conjunction(BTreeSet::singleton(NegativeNormalLTL::Until(Rc::clone(f1), Rc::clone(f2))))));
             res.extend(circle_x(&find_delta(f1), &operand));
         }
         NegativeNormalLTL::Release(f1, f2) => {
             let mut union = HashSet::new();
             union.extend(find_delta(f1));
-            union.insert((SymbolConjunction::TT, vec! [NegativeNormalLTL::Release(Rc::clone(f1), Rc::clone(f2))]));
+            union.insert((SymbolConjunction::TT, LTLConjunction::Conjunction(BTreeSet::singleton(NegativeNormalLTL::Release(Rc::clone(f1), Rc::clone(f2))))));
             res.extend(
                 circle_x(&find_delta(f2), &union)
             )
@@ -177,54 +191,4 @@ fn find_delta(formula: &NegativeNormalLTL) -> HashSet<VWAATransitionResult> {
     //     ).collect()
 
     res
-}
-
-trait Add {
-    type Item;
-    fn add(self, item: Self::Item) -> Self;
-}
-
-trait AddMany {
-    type Item;
-    fn add_many(self, items: impl IntoIterator<Item = Self::Item>) -> Self;
-}
-
-impl <T> Add for HashSet<T> 
-where
-    T: Eq + Hash {
-    type Item = T;
-
-    fn add(mut self, item: Self::Item) -> Self {
-        self.insert(item);
-        self
-    }
-}
-
-impl <T> AddMany for HashSet<T> 
-where
-    T: Eq + Hash {
-    type Item = T;
-
-    fn add_many(mut self, items: impl IntoIterator<Item = Self::Item>) -> Self {
-        self.extend(items);
-        self
-    }
-}
-
-impl <T> Add for Vec<T> {
-    type Item = T;
-
-    fn add(mut self, item: Self::Item) -> Self {
-        self.push(item);
-        self
-    }
-}
-
-impl <T> AddMany for Vec<T> {
-    type Item = T;
-
-    fn add_many(mut self, item: impl IntoIterator<Item = Self::Item>) -> Self {
-        self.extend(item);
-        self
-    }
 }

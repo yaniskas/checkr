@@ -28,7 +28,7 @@ pub enum ReducedLTL {
     Until(Rc<ReducedLTL>, Rc<ReducedLTL>)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NegativeNormalLTL {
     True,
     False,

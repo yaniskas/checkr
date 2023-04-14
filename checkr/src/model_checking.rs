@@ -1,5 +1,9 @@
 pub mod ltl;
 pub mod vwaa;
+pub mod gba;
+pub mod traits;
+pub mod simplification;
+pub mod ba;
 
 use std::{collections::{HashSet, VecDeque, HashMap}, fmt::Display};
 
