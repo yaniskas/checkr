@@ -173,7 +173,8 @@ fn ltl_power_set(set: HashSet<NegativeNormalLTL>) -> HashSet<LTLConjunction> {
                 .into_iter()
                 .map(|e| e.conjuct(&LTLConjunction::Conjunction(BTreeSet::new().add((*elem).clone()))))
         )
-    })
+    }).add(LTLConjunction::TT)
+    // TODO: Figure out how to add the true in a nicer way
 }
 
 fn remove_non_minimal<T: Eq + Hash>(set: HashSet<T>, comparator: impl Fn(&T, &T) -> Option<Ordering>) -> HashSet<T> {
@@ -277,7 +278,7 @@ impl Contains for LTLConjunction {
 
     fn contains(&self, item: &Self::Item) -> bool {
         match self {
-            LTLConjunction::TT => true,
+            LTLConjunction::TT => false,
             LTLConjunction::Conjunction(set) => set.contains(item)
         }
     }

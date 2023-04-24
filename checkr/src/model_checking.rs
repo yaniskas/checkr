@@ -4,6 +4,7 @@ pub mod gba;
 pub mod traits;
 pub mod simplification;
 pub mod ba;
+pub mod nested_dfs;
 
 use std::{collections::{HashSet, VecDeque, HashMap}, fmt::Display};
 
