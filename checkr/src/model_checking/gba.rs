@@ -7,7 +7,7 @@ use std::iter;
 
 use crate::model_checking::vwaa::LTLConjunction;
 
-use super::ltl::NegativeNormalLTL;
+use super::ltl_ast::NegativeNormalLTL;
 use super::vwaa::{Symbol, VWAATransitionResult, SymbolConjunction, VWAA, circle_x, Conjuct};
 use super::traits::*;
 
@@ -43,9 +43,9 @@ impl GBA {
         let delta2prime = q_prime.iter()
             .map(|ltlcon| {
                 let results = match ltlcon {
-                    LTLConjunction::TT => delta[&NegativeNormalLTL::True].clone().into_iter().collect::<BTreeSet<_>>(),
+                    LTLConjunction::TT => delta.get(&NegativeNormalLTL::True).map(|v| v.clone().into_iter().collect::<BTreeSet<_>>()).unwrap_or_else(|| BTreeSet::new()),
                     LTLConjunction::Conjunction(set) => set.iter()
-                        .map(|e| delta[e].clone())
+                        .map(|e| delta.get(e).map(|v| v.clone()).unwrap_or_else(|| HashSet::new()))
                         .reduce(|e1, e2| circle_x(&e1, &e2))
                         .unwrap_or(HashSet::new().add((SymbolConjunction::TT, LTLConjunction::Conjunction(BTreeSet::new().add(NegativeNormalLTL::False)))))
                         .into_iter()

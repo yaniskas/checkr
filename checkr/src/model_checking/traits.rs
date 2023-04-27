@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, BTreeMap};
 
 use std::hash::Hash;
 
@@ -68,6 +68,26 @@ impl <T: Ord> AddMany for BTreeSet<T> {
 
     fn add_many(mut self, items: impl IntoIterator<Item = Self::Item>) -> Self {
         self.extend(items);
+        self
+    }
+}
+
+impl <K: Ord, V> Add for BTreeMap<K, V> {
+    type Item = (K, V);
+
+    fn add(mut self, item: Self::Item) -> Self {
+        self.insert(item.0, item.1);
+        self
+    }
+}
+
+impl <K: Ord, V> AddMany for BTreeMap<K, V> {
+    type Item = (K, V);
+
+    fn add_many(mut self, items: impl IntoIterator<Item = Self::Item>) -> Self {
+        for (k, v) in items {
+            self.insert(k, v);
+        }
         self
     }
 }

@@ -2,7 +2,7 @@ use std::{collections::{HashSet, HashMap, BTreeSet}, rc::Rc, fmt::Display, hash:
 
 use crate::ast::BExpr;
 
-use super::ltl::{NegativeNormalLTL, temporal_subformulae, until_subformulae};
+use super::ltl_ast::{NegativeNormalLTL, temporal_subformulae, until_subformulae};
 use super::traits::*;
 
 #[derive(Debug, PartialEq, Eq)]

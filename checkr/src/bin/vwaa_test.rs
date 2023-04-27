@@ -1,32 +1,15 @@
+#![feature(box_syntax)]
+
 use std::fs;
 
-use checkr::{model_checking::{ltl::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, ast::{BExpr, AExpr, RelOp}};
-
+use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, ast::{BExpr, AExpr, RelOp}};
 
 fn main() {
-    let formula = LTL::Not(
-        Box::new(LTL::Implies(
-            Box::new(LTL::Forever(
-                Box::new(LTL::Eventually(
-                    Box::new(LTL::Atomic(BExpr::Rel(
-                        AExpr::Number(5), 
-                        RelOp::Ge, 
-                        AExpr::Number(4)
-                    )))
-                ))
-            )),
-            Box::new(LTL::Forever(
-                Box::new(LTL::Implies(
-                    Box::new(LTL::Atomic(
-                        BExpr::Rel(
-                            AExpr::Number(10), RelOp::Ge, AExpr::Number(9)
-                        )
-                    )),
-                    Box::new(LTL::Eventually(Box::new(LTL::Atomic(BExpr::Rel(AExpr::Number(11), RelOp::Ge, AExpr::Number(10))))))
-                ))
-            ))
-        ))
-    );
+    let str = "
+    <>{i = 1}
+    ";
+
+    let formula = dbg!(LTL::Not(Box::new(parse_ltl(str).unwrap())));
 
     let reduced = dbg!(formula.reduced());
     let nn = dbg!(reduced.to_negative_normal());

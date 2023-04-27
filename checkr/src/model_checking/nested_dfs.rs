@@ -90,7 +90,8 @@ pub type ProductNode = (Configuration, TrappingBAState);
 
 pub type PathFragment = Vec<ProductNode>;
 
-pub enum DFSResult {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LTLVerificationResult {
     CycleFound(PathFragment),
     CycleNotFound,
     SearchDepthExceeded,
@@ -115,20 +116,20 @@ fn symcon_to_bexp(symcon: &SymbolConjunction) -> BExpr {
     }
 }
 
-pub fn nested_dfs(program_graph: ProgramGraph, buchi: BA, initial_memory: ModelCheckMemory, search_depth: usize) -> DFSResult {
-    let product = ProductTransitionSystem::new(&program_graph, &buchi);
+pub fn nested_dfs(program_graph: &ProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
+    let product = ProductTransitionSystem::new(program_graph, buchi);
 
     let mut R: HashSet<ProductNode> = HashSet::new();
     let mut T: HashSet<ProductNode> = HashSet::new();
 
     let mut search_depth_exceeded = false;
     
-    for s in product.initial_nodes(&initial_memory) {
+    for s in product.initial_nodes(initial_memory) {
         if !R.contains(&s) {
             match reachable_cycle(&s, &product, &mut R, &mut T, search_depth) {
-                trace @ DFSResult::CycleFound(_) => return trace,
-                DFSResult::CycleNotFound => continue,
-                DFSResult::SearchDepthExceeded => {
+                trace @ LTLVerificationResult::CycleFound(_) => return trace,
+                LTLVerificationResult::CycleNotFound => continue,
+                LTLVerificationResult::SearchDepthExceeded => {
                     search_depth_exceeded = true;
                     continue;
                 }
@@ -136,10 +137,10 @@ pub fn nested_dfs(program_graph: ProgramGraph, buchi: BA, initial_memory: ModelC
         }
     }
 
-    if search_depth_exceeded {DFSResult::SearchDepthExceeded} else {DFSResult::CycleNotFound}
+    if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut HashSet<ProductNode>, T: &mut HashSet<ProductNode>, search_depth: usize) -> DFSResult {
+fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut HashSet<ProductNode>, T: &mut HashSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
     let mut U: VecDeque<ProductNode> = VecDeque::new();
 
     U.push_front(s.clone());
@@ -175,12 +176,12 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut H
                     println!("Calling inner DFS");
                     let cycle_found = cycle_check(&s_prime, product, T, search_depth);
                     match cycle_found {
-                        DFSResult::CycleFound(V) => {
+                        LTLVerificationResult::CycleFound(V) => {
                             let U: Vec<_> = U.into_iter().rev().collect();
-                            return DFSResult::CycleFound(U.add_many(V));
+                            return LTLVerificationResult::CycleFound(U.add_many(V));
                         }
-                        DFSResult::CycleNotFound => continue,
-                        DFSResult::SearchDepthExceeded => {
+                        LTLVerificationResult::CycleNotFound => continue,
+                        LTLVerificationResult::SearchDepthExceeded => {
                             search_depth_exceeded = true;
                             continue;
                         }
@@ -190,10 +191,10 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut H
         }
     }
 
-    if search_depth_exceeded {DFSResult::SearchDepthExceeded} else {DFSResult::CycleNotFound}
+    if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashSet<ProductNode>, search_depth: usize) -> DFSResult {
+fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
     let mut V: VecDeque<ProductNode> = VecDeque::new();
 
     V.push_front(s.clone());
@@ -213,7 +214,7 @@ fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashS
         if post_s_prime.contains(&s) {
             V.push_front(s.clone());
             println!("Found cycle to final state {:#?}", s);
-            return DFSResult::CycleFound(V.into_iter().rev().collect());
+            return LTLVerificationResult::CycleFound(V.into_iter().rev().collect());
         } else {
             if let Some(s2prime) = post_s_prime.iter().find(|e| !T.contains(e)) {
                 V.push_front(s2prime.clone());
@@ -224,5 +225,5 @@ fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashS
         }
     }
     
-    if search_depth_exceeded {DFSResult::SearchDepthExceeded} else {DFSResult::CycleNotFound}
+    if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }

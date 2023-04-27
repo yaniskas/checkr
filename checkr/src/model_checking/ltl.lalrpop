@@ -1,0 +1,117 @@
+use std::str::FromStr;
+use crate::model_checking::ltl_ast::LTL;
+use crate::ast::{AExpr, BExpr, Target, Variable, Array, RelOp, LogicOp, AOp};
+
+grammar;
+
+pub LTL: LTL = {
+    IffLTL,
+}
+
+IffLTL: LTL = {
+    <l: IffLTL> "<->" <r: ImpliesLTL> => LTL::Iff(Box::new(l), Box::new(r)),
+    ImpliesLTL,
+}
+
+ImpliesLTL: LTL = {
+    <l: ImpliesLTL> "->" <r: OrLTL> => LTL::Implies(Box::new(l), Box::new(r)),
+    OrLTL,
+}
+
+OrLTL: LTL = {
+    <l: OrLTL> "||" <r: XorLTL> => LTL::Or(Box::new(l), Box::new(r)),
+    XorLTL,
+}
+
+XorLTL: LTL = {
+    <l: XorLTL> "^^" <r: AndLTL> => LTL::Xor(Box::new(l), Box::new(r)),
+    AndLTL,
+}
+
+AndLTL: LTL = {
+    <l: AndLTL> "&&" <r: UntilLTL> => LTL::And(Box::new(l), Box::new(r)),
+    UntilLTL,
+}
+
+UntilLTL: LTL = {
+    <l: UnaryLTL> ":" <r: UntilLTL> => LTL::Until(Box::new(l), Box::new(r)),
+    UnaryLTL,
+}
+
+UnaryLTL: LTL = {
+    "!" <UnaryLTL> => LTL::Not(Box::new(<>)),
+    "()" <UnaryLTL> => LTL::Next(Box::new(<>)),
+    "<>" <UnaryLTL> => LTL::Eventually(Box::new(<>)),
+    "[]" <UnaryLTL> => LTL::Forever(Box::new(<>)),
+    AtomicLTL,
+}
+
+AtomicLTL: LTL = {
+    "true" => LTL::True,
+    "{" <BExpr_> "}" => LTL::Atomic(<>),
+    "(" <LTL> ")",
+}
+
+
+// Copied from gcl.lalrpop
+#[inline]
+Target: Target<Box<AExpr>> = {
+    Variable => Target::Variable(<>),
+    <arr:Array> "[" <idx:AExpr> "]" => Target::Array(arr, box idx),
+}
+#[inline]
+Variable: Variable = Ident => Variable(<>);
+#[inline]
+Array: Array = Ident => Array(<>);
+
+AExpr_ = AExpr;
+AExpr: AExpr = {
+    #[precedence(level="1")]
+    Int => AExpr::Number(<>),
+    Target => AExpr::Reference(<>),
+    "-" <AExpr> => AExpr::Minus(box <>),
+    "(" <AExpr_> ")",
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l:AExpr> "^" <r:AExpr> => AExpr::Binary(box l, AOp::Pow, box r),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <l:AExpr> "*" <r:AExpr> => AExpr::Binary(box l, AOp::Times, box r),
+    <l:AExpr> "/" <r:AExpr> => AExpr::Binary(box l, AOp::Divide, box r),
+
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l:AExpr> "+" <r:AExpr> => AExpr::Binary(box l, AOp::Plus, box r),
+    <l:AExpr> "-" <r:AExpr> => AExpr::Binary(box l, AOp::Minus, box r),
+};
+
+BExpr: BExpr = {
+    #[precedence(level="0")]
+    <l:AExpr_> <op:RelOp> <r:AExpr_> => BExpr::Rel(l, op, r),
+    "true" => BExpr::Bool(true),
+    "false" => BExpr::Bool(false),
+    "!" <BExpr> => BExpr::Not(box <>),
+    "(" <BExpr_> ")",
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    <l:BExpr> "&" <r:BExpr> => BExpr::Logic(box l, LogicOp::And, box r),
+    <l:BExpr> "&&" <r:BExpr> => BExpr::Logic(box l, LogicOp::And, box r),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l:BExpr> "|" <r:BExpr> => BExpr::Logic(box l, LogicOp::Or, box r),
+    <l:BExpr> "||" <r:BExpr> => BExpr::Logic(box l, LogicOp::Or, box r),
+};
+BExpr_: BExpr = BExpr;
+
+RelOp: RelOp = {
+    "<" => RelOp::Lt,
+    ">" => RelOp::Gt,
+    "<=" => RelOp::Le,
+    ">=" => RelOp::Ge,
+    "=" => RelOp::Eq,
+    "!=" => RelOp::Ne,
+};
+
+Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
+
+Int: i64 = r"[0-9]+" => i64::from_str(<>).unwrap();

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, rc::Rc, fmt::Display};
 
-use crate::ast::BExpr;
+use crate::{ast::BExpr, parse::ParseError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LTL {
@@ -244,15 +244,56 @@ impl Display for NegativeNormalLTL {
     }
 }
 
+use lalrpop_util::{lalrpop_mod};
+use once_cell::sync::Lazy;
+
+lalrpop_mod!(pub ltl, "/model_checking/ltl.rs");
+
+pub fn parse_ltl(src: &str) -> Result<LTL, ParseError> {
+    static PARSER: Lazy<ltl::LTLParser> = Lazy::new(ltl::LTLParser::new);
+
+    PARSER.parse(src).map_err(|e| ParseError::new(src, e))
+}
 
 
 #[cfg(test)]
 mod tests {
+    use crate::{ast::{AExpr, RelOp}, model_checking::ltl_ast::tests::ltl::LTLParser};
+
     use super::*;
 
     #[test]
     fn eventually_reduced() {
         let reduced = LTL::Eventually(Box::new(LTL::Atomic(BExpr::Bool(false)))).reduced();
         assert_eq!(reduced, ReducedLTL::Until(Rc::new(ReducedLTL::True), Rc::new(ReducedLTL::Atomic(BExpr::Bool(false)))));
+    }
+
+    #[test]
+    fn parse_example() {
+        let formula = LTL::Not(
+            Box::new(LTL::Implies(
+                Box::new(LTL::Forever(
+                    Box::new(LTL::Eventually(
+                        Box::new(LTL::Atomic(BExpr::Rel(
+                            AExpr::Number(5), 
+                            RelOp::Ge, 
+                            AExpr::Number(4)
+                        )))
+                    ))
+                )),
+                Box::new(LTL::Forever(
+                    Box::new(LTL::Implies(
+                        Box::new(LTL::Atomic(
+                            BExpr::Rel(
+                                AExpr::Number(10), RelOp::Ge, AExpr::Number(9)
+                            )
+                        )),
+                        Box::new(LTL::Eventually(Box::new(LTL::Atomic(BExpr::Rel(AExpr::Number(11), RelOp::Ge, AExpr::Number(10))))))
+                    ))
+                ))
+            ))
+        );
+
+        assert_eq!(formula, parse_ltl("!([]<>{5 >= 4} -> []({10 >= 9} -> <>{11 >= 10}))").unwrap())
     }
 }

@@ -1,6 +1,6 @@
 use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, DFSResult}}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}};
 
 fn main() {
     let program = "
@@ -188,18 +188,18 @@ fn main() {
     // Model checking
     println!("\n\n\n\n\nChecking LTL formula");
 
-    let trace = nested_dfs(graph, simplified_ba, memory, search_depth);
+    let trace = nested_dfs(&graph, &simplified_ba, &memory, search_depth);
     match trace {
-        DFSResult::CycleFound(trace) => {
+        LTLVerificationResult::CycleFound(trace) => {
             println!("Violating trace found:");
             for (config, bastate) in trace {
                 println!("{:?}, {:?}", config, bastate);
             }
         }
-        DFSResult::CycleNotFound => {
+        LTLVerificationResult::CycleNotFound => {
             println!("No violating trace found");
         }
-        DFSResult::SearchDepthExceeded => {
+        LTLVerificationResult::SearchDepthExceeded => {
             println!("Search depth exceeded");
         }
     }

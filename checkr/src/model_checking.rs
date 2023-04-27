@@ -1,10 +1,11 @@
-pub mod ltl;
+pub mod ltl_ast;
 pub mod vwaa;
 pub mod gba;
 pub mod traits;
 pub mod simplification;
 pub mod ba;
 pub mod nested_dfs;
+pub mod ltl_verification;
 
 use std::{collections::{HashSet, VecDeque, HashMap}, fmt::Display};
 
