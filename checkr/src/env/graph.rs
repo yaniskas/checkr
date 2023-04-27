@@ -11,7 +11,7 @@ use crate::{
     pg::{Determinism, ProgramGraph},
 };
 
-use super::{Analysis, Environment, Markdown, ToMarkdown};
+use super::{Analysis, EnvError, Environment, Markdown, ToMarkdown};
 
 #[derive(Debug)]
 pub struct GraphEnv;
@@ -55,9 +55,13 @@ impl Environment for GraphEnv {
 
     const ANALYSIS: Analysis = Analysis::Graph;
 
-    fn run(&self, cmds: &crate::ast::Commands, input: &Self::Input) -> Self::Output {
+    fn run(
+        &self,
+        cmds: &crate::ast::Commands,
+        input: &Self::Input,
+    ) -> Result<Self::Output, EnvError> {
         let pg = ProgramGraph::new(input.determinism, cmds);
-        GraphEnvOutput { dot: pg.dot() }
+        Ok(GraphEnvOutput { dot: pg.dot() })
     }
 
     fn validate(
@@ -65,21 +69,21 @@ impl Environment for GraphEnv {
         cmds: &crate::ast::Commands,
         input: &Self::Input,
         output: &Self::Output,
-    ) -> super::ValidationResult {
-        let reference = self.run(cmds, input);
+    ) -> Result<super::ValidationResult, EnvError> {
+        let reference = self.run(cmds, input)?;
 
-        let (a_data, a_node_mapping, a_graph) = dot_to_petgraph(&reference.dot);
-        let (b_data, b_node_mapping, b_graph) = dot_to_petgraph(&output.dot);
+        let (a_data, _a_node_mapping, a_graph) = dot_to_petgraph(&reference.dot);
+        let (b_data, _b_node_mapping, b_graph) = dot_to_petgraph(&output.dot);
 
         eprintln!("{a_graph:?}");
         eprintln!("{b_graph:?}");
 
         let a_graph = &a_graph;
         let b_graph = &b_graph;
-        // let mut binding_1 = |a: &String, b: &String| a == b;
-        let mut binding_1 = |a: &String, b: &String| true;
-        // let mut binding_2 = |a: &String, b: &String| a == b;
-        let mut binding_2 = |a: &String, b: &String| true;
+        // let mut binding_1 = |_a: &String, _b: &String| a == b;
+        let mut binding_1 = |_a: &String, _b: &String| true;
+        // let mut binding_2 = |_a: &String, _b: &String| a == b;
+        let mut binding_2 = |_a: &String, _b: &String| true;
         let res = petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
             &a_graph,
             &b_graph,
@@ -149,8 +153,8 @@ fn dot_to_petgraph(
     let parsed = graphviz_rust::parse(dot).unwrap();
 
     match parsed {
-        graphviz_rust::dot_structures::Graph::Graph { id, strict, stmts } => todo!(),
-        graphviz_rust::dot_structures::Graph::DiGraph { id, strict, stmts } => {
+        graphviz_rust::dot_structures::Graph::Graph { .. } => todo!(),
+        graphviz_rust::dot_structures::Graph::DiGraph { stmts, .. } => {
             for stmt in stmts {
                 match stmt {
                     graphviz_rust::dot_structures::Stmt::Node(n) => {
@@ -229,10 +233,10 @@ fn dot_to_petgraph(
     }
 
     let start_node = nodes.iter().find_map(|(n, node)| {
-        (node.outgoing.len() == 1 && node.ingoing.len() == 0).then(|| (n, node))
+        (node.outgoing.len() == 1 && node.ingoing.is_empty()).then_some((n, node))
     });
     let end_node = nodes.iter().find_map(|(n, node)| {
-        (node.outgoing.len() == 0 && node.ingoing.len() == 1).then(|| (n, node))
+        (node.outgoing.is_empty() && node.ingoing.len() == 1).then_some((n, node))
     });
 
     debug!(

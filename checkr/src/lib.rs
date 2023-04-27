@@ -28,13 +28,11 @@
 //! Similarly, the inputs of [`Environment`] implementations must too implement
 //! [`Generate`].
 
-#![feature(box_patterns, box_syntax)]
-
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use driver::Driver;
-use env::{Environment, ValidationResult};
-use generation::Generate;
+use env::{Analysis, Environment, Input, ValidationResult};
+pub use miette;
 use rand::prelude::*;
 use tracing::debug;
 
@@ -42,7 +40,9 @@ use crate::ast::Commands;
 
 pub mod analysis;
 pub mod ast;
+pub mod config;
 pub mod driver;
+pub mod egg;
 pub mod env;
 pub mod fmt;
 mod gcl;
@@ -55,20 +55,34 @@ pub mod security;
 pub mod sign;
 pub mod model_checking;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ProgramGenerationBuilder {
+    analysis: Analysis,
     fuel: Option<u32>,
     seed: Option<u64>,
     no_loop: bool,
+    no_division: bool,
+    generate_annotated: bool,
 }
 
 impl Commands {
-    pub fn builder() -> ProgramGenerationBuilder {
-        ProgramGenerationBuilder::default()
+    pub fn builder(analysis: Analysis) -> ProgramGenerationBuilder {
+        ProgramGenerationBuilder::new(analysis)
     }
 }
 
 impl ProgramGenerationBuilder {
+    pub fn new(analysis: Analysis) -> ProgramGenerationBuilder {
+        ProgramGenerationBuilder {
+            analysis,
+            fuel: Default::default(),
+            seed: Default::default(),
+            no_loop: Default::default(),
+            no_division: Default::default(),
+            generate_annotated: Default::default(),
+        }
+    }
+
     pub fn fuel(self, fuel: Option<u32>) -> Self {
         ProgramGenerationBuilder { fuel, ..self }
     }
@@ -78,7 +92,20 @@ impl ProgramGenerationBuilder {
     pub fn no_loop(self, no_loop: bool) -> Self {
         ProgramGenerationBuilder { no_loop, ..self }
     }
-    fn internal_build(self, cmds: Option<Commands>) -> GeneratedProgram {
+    pub fn no_division(self, no_division: bool) -> Self {
+        ProgramGenerationBuilder {
+            no_division,
+            ..self
+        }
+    }
+
+    pub fn generate_annotated(self, generate_annotated: bool) -> Self {
+        ProgramGenerationBuilder {
+            generate_annotated,
+            ..self
+        }
+    }
+    fn internal_build(self, cmds: Option<Commands>, input: Option<Input>) -> GeneratedProgram {
         let seed = match self.seed {
             Some(seed) => seed,
             None => rand::random(),
@@ -88,29 +115,46 @@ impl ProgramGenerationBuilder {
         let fuel = self.fuel.unwrap_or(10);
 
         let mut cx = generation::Context::new(fuel, &mut rng);
-        cx.set_no_loop(self.no_loop);
+        cx.set_no_loop(self.no_loop)
+            .set_no_division(self.no_division);
+
+        let cmds = match cmds {
+            Some(cmds) => cmds,
+            None => {
+                let cmds = Commands(cx.many(5, 10, &mut rng));
+                if self.generate_annotated {
+                    Commands(vec![generation::annotate_cmds(cmds, &mut rng)])
+                } else {
+                    cmds
+                }
+            }
+        };
+        let input = input.unwrap_or_else(|| self.analysis.gen_input(&cmds, &mut rng));
 
         GeneratedProgram {
-            cmds: cmds.unwrap_or_else(|| Commands(cx.many(5, 10, &mut rng))),
+            cmds,
+            input,
             fuel,
             seed,
-            rng,
         }
     }
     pub fn from_cmds(self, cmds: Commands) -> GeneratedProgram {
-        self.internal_build(Some(cmds))
+        self.internal_build(Some(cmds), None)
+    }
+    pub fn from_cmds_and_input(self, cmds: Commands, input: Input) -> GeneratedProgram {
+        self.internal_build(Some(cmds), Some(input))
     }
     pub fn build(self) -> GeneratedProgram {
-        self.internal_build(None)
+        self.internal_build(None, None)
     }
 }
 
 #[derive(Debug)]
 pub struct GeneratedProgram {
     pub cmds: Commands,
+    pub input: Input,
     pub fuel: u32,
     pub seed: u64,
-    pub rng: SmallRng,
 }
 
 impl GeneratedProgram {
@@ -123,15 +167,29 @@ impl GeneratedProgram {
 
         let GeneratedProgram {
             cmds,
+            input,
             fuel,
             seed,
-            mut rng,
         } = self;
 
-        let input = <E as Environment>::Input::gen(&mut cmds.clone(), &mut rng);
-        let exec_result = driver.exec::<E>(&cmds, &input).await;
+        let input = input.parsed::<E>().unwrap();
+
+        let timeout_duration = Duration::from_secs(10);
+        let exec_result =
+            tokio::time::timeout(timeout_duration, driver.exec::<E>(&cmds, &input)).await;
         match exec_result {
-            Ok(exec_result) => {
+            Err(_) => AnalysisSummary {
+                fuel,
+                seed,
+                cmds,
+                input,
+                output: None,
+                time: timeout_duration,
+                stdout: String::new(),
+                stderr: String::new(),
+                result: Ok(ValidationResult::TimeOut),
+            },
+            Ok(Ok(exec_result)) => {
                 let validation_result = env.validate(&cmds, &input, &exec_result.parsed);
                 AnalysisSummary {
                     fuel,
@@ -140,14 +198,12 @@ impl GeneratedProgram {
                     time: exec_result.took,
                     input,
                     output: Some(exec_result.parsed),
-                    stdout: String::from_utf8(exec_result.output.stdout)
-                        .expect("failed to parse stdout"),
-                    stderr: String::from_utf8(exec_result.output.stderr)
-                        .expect("failed to parse stderr"),
-                    result: Ok(validation_result),
+                    stdout: truncated_from_utf8(exec_result.output.stdout),
+                    stderr: truncated_from_utf8(exec_result.output.stderr),
+                    result: validation_result.map_err(|err| err.into()),
                 }
             }
-            Err(err) => match err {
+            Ok(Err(err)) => match err {
                 driver::ExecError::Serialize(err) => AnalysisSummary {
                     fuel,
                     seed,
@@ -159,7 +215,7 @@ impl GeneratedProgram {
                     stderr: String::new(),
                     result: Err(err.into()),
                 },
-                driver::ExecError::RunExec { cmd, source } => AnalysisSummary {
+                driver::ExecError::RunExec { cmd: _, source } => AnalysisSummary {
                     fuel,
                     seed,
                     cmds,
@@ -177,10 +233,8 @@ impl GeneratedProgram {
                     input,
                     output: None,
                     time,
-                    stdout: String::from_utf8(output.stdout.clone())
-                        .expect("stdout should be valid utf8"),
-                    stderr: String::from_utf8(output.stderr.clone())
-                        .expect("stderr should be valid utf8"),
+                    stdout: truncated_from_utf8(&output.stdout),
+                    stderr: truncated_from_utf8(&output.stderr),
                     result: Err(driver::ExecError::CommandFailed(output, time).into()),
                 },
                 driver::ExecError::Parse {
@@ -194,15 +248,25 @@ impl GeneratedProgram {
                     input,
                     output: None,
                     time,
-                    stdout: String::from_utf8(run_output.stdout.clone())
-                        .expect("stdout should be valid utf8"),
-                    stderr: String::from_utf8(run_output.stderr)
-                        .expect("stderr should be valid utf8"),
+                    stdout: truncated_from_utf8(run_output.stdout),
+                    stderr: truncated_from_utf8(run_output.stderr),
                     result: Err(inner.into()),
                 },
             },
         }
     }
+}
+
+fn truncated_from_utf8<'a>(bytes: impl Into<Cow<'a, [u8]>>) -> String {
+    const MAX_SIZE: usize = 10_000;
+    let bytes = match bytes.into() {
+        Cow::Borrowed(bytes) => bytes.get(0..MAX_SIZE).unwrap_or(bytes).to_vec(),
+        Cow::Owned(mut bytes) => {
+            bytes.truncate(MAX_SIZE);
+            bytes
+        }
+    };
+    String::from_utf8(bytes).expect("should be valid utf8")
 }
 
 #[derive(Debug)]

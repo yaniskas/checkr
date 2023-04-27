@@ -1,8 +1,9 @@
-import React, { useRef } from "react";
-import { useEffect, useState } from "react";
-import * as wasm from "../../../wasm/pkg/wasm";
-import deepEqual from "deep-equal";
-import { ArrowPathRoundedSquareIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState } from "react";
+import * as core from "../lib/core";
+import {
+  ArrowPathRoundedSquareIcon,
+  ClipboardDocumentIcon,
+} from "@heroicons/react/24/outline";
 import * as api from "../lib/api";
 import ReactMarkdown from "react-markdown";
 import { parse } from "ansicolor";
@@ -11,13 +12,18 @@ import {
   Analysis,
   AnalysisResponse,
   CompilationStatus,
-  CompilerState,
+  Input,
 } from "../lib/types";
 import { StretchEditor } from "./StretchEditor";
 import { Indicator, IndicatorState, INDICATOR_TEXT_COLOR } from "./Indicator";
 import { capitalCase } from "change-case";
-
-wasm.init_hook();
+import { toast, Toaster } from "react-hot-toast";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+} from "react-query";
 
 const searchParams = new URL(document.location.toString()).searchParams;
 
@@ -31,35 +37,59 @@ const ANALYSIS_NAMES = Object.fromEntries(
   ENVS.map((env) => [env, capitalCase(env)] satisfies [Analysis, string])
 ) as Record<Analysis, string>;
 
-type GraphShown = "graph" | "reference";
+type GraphShown = "graph" | "reference" | "split";
+
+const queryClient = new QueryClient();
 
 export const AnalysisEnv = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AnalysisEnvInner />
+    </QueryClientProvider>
+  );
+};
+export const AnalysisEnvInner = () => {
   const [deterministic, setDeterministic] = useState(true);
   const [env, setEnv] = useState<Analysis>(
     inputted.analysis && (ENVS as string[]).includes(inputted.analysis)
       ? (inputted.analysis as Analysis)
-      : Analysis.Interpreter
+      : Analysis.Parse
   );
-  const [src, setSrc] = useState(inputted.src ?? wasm.generate_program(env));
+  const [src, setSrc] = useState(inputted.src ?? "skip");
   const [graphShown, setGraphShown] = useState<GraphShown>("graph");
-  const [dotReference, setDotReference] = useState<null | string>(null);
-  const [dotGraph, setDotGraph] = useState<null | string>(null);
 
-  useEffect(() => {
-    setDotReference(wasm.dot(deterministic, src));
+  const { data: dotReference } = useQuery(
+    ["dot-reference", deterministic, src],
+    async ({}) => core.dot(deterministic, src),
+    { keepPreviousData: true }
+  );
 
-    const { abort, promise } = api.graph({ deterministic, src });
+  const compilationStatus = api.useCompilationStatus({ queryClient });
 
-    promise
-      .then((res) => {
-        setDotGraph(res.dot ?? null);
-      })
-      .catch((e) => {
-        if (e.name != "AbortError") console.error("analysis error:", e);
-      });
+  const { data: dotGraph } = useQuery(
+    [
+      ["dotGraph", compilationStatus?.state, deterministic, src],
+      deterministic,
+      src,
+    ],
+    ({ signal }) => api.graph(signal, { deterministic, src }),
+    { keepPreviousData: true }
+  );
 
-    return () => abort();
-  }, [deterministic, src]);
+  const generateProgram = useMutation(
+    async (env: Analysis) => {
+      const src = await core.generate_program(env);
+      const input = await core.generate_input_for(src, env);
+      return { src, input };
+    },
+    {
+      onSuccess: ({ src, input }) => {
+        setSrc(src);
+        setInput(input ?? null);
+      },
+    }
+  );
+  const [input, setInput] = useState<Input | null>(null);
 
   return (
     <div className="grid min-h-0 grid-cols-[1fr_2fr] grid-rows-[1fr_auto_auto_1fr]">
@@ -67,9 +97,7 @@ export const AnalysisEnv = () => {
         <div className="grid grid-cols-3 divide-x divide-slate-600 border-r border-slate-600">
           <button
             className="flex items-center justify-center space-x-1 bg-slate-800 py-1 px-1.5 text-sm text-white transition hover:bg-slate-700 active:bg-slate-900"
-            onClick={() => {
-              setSrc(wasm.generate_program(env));
-            }}
+            onClick={() => generateProgram.mutate(env)}
           >
             <span>Generate</span>
             <ArrowPathRoundedSquareIcon className="w-4" />
@@ -105,30 +133,81 @@ export const AnalysisEnv = () => {
       </div>
       <div className="relative row-span-2 bg-slate-800 text-xs">
         <div className="absolute top-4 right-6 flex flex-col space-y-2">
-          <button
-            onClick={() => setGraphShown("graph")}
-            className={
-              "z-10 flex aspect-square w-7 items-center justify-center rounded-full border border-current p-1 text-center transition hover:text-slate-200 " +
-              (graphShown == "graph" ? "text-white" : "text-slate-600")
-            }
-          >
-            G
-          </button>
-          <button
-            onClick={() => setGraphShown("reference")}
-            className={
-              "z-10 flex aspect-square w-7 items-center justify-center rounded-full border border-current p-1 text-center transition hover:text-slate-200 " +
-              (graphShown == "reference" ? "text-white" : "text-slate-600")
-            }
-          >
-            R
-          </button>
+          {(
+            [
+              {
+                graph: "graph",
+                icon: "G",
+                dot:
+                  dotGraph?.type == "Graph"
+                    ? dotGraph.content.dot
+                    : dotGraph?.type == "Error"
+                    ? dotGraph.content.error
+                    : "",
+              },
+              { graph: "reference", icon: "R", dot: dotReference ?? "" },
+              { graph: "split", icon: "S", dot: null },
+            ] satisfies {
+              graph: GraphShown;
+              icon: string;
+              dot: string | null;
+            }[]
+          ).map((g) => (
+            <div key={g.graph} className="flex flex-row-reverse">
+              <button
+                onClick={() => setGraphShown(g.graph)}
+                className={
+                  "z-10 flex aspect-square w-7 items-center justify-center rounded-full border border-current p-1 text-center transition hover:text-slate-200 " +
+                  (graphShown == g.graph ? "text-white" : "text-slate-600")
+                }
+              >
+                {g.icon}
+              </button>
+              {g.dot && (
+                <button
+                  onClick={() => {
+                    if (!g.dot) return;
+                    toast("Graph DOT copied to clipboard!");
+                    window.navigator.clipboard.writeText(g.dot);
+                  }}
+                  className={
+                    "z-10 flex aspect-square w-7 items-center justify-center p-1 transition text-slate-500 hover:text-slate-200 mr-2" +
+                    (graphShown == g.graph ? "text-white" : "text-slate-600")
+                  }
+                >
+                  <ClipboardDocumentIcon className="w-4" />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
-        {graphShown == "graph"
-          ? dotGraph && <Network dot={dotGraph} />
-          : dotReference && <Network dot={dotReference} />}
+        {graphShown == "graph" ? (
+          dotGraph?.type == "Graph" && <Network dot={dotGraph.content.dot} />
+        ) : graphShown == "reference" ? (
+          dotReference && <Network dot={dotReference} />
+        ) : (
+          <div className="h-full w-full grid grid-cols-2 [&>*]:border-l [&>*]:border-slate-600">
+            <div className="text-white px-1 py-2">Graph</div>
+            <div className="text-white px-1 py-2">Reference</div>
+            <div className="w-full h-full">
+              {dotGraph?.type == "Graph" && (
+                <Network dot={dotGraph.content.dot} />
+              )}
+            </div>
+            <div className="w-full h-full">
+              {dotReference && <Network dot={dotReference} />}
+            </div>
+          </div>
+        )}
       </div>
-      <Env env={env} src={src} />
+      <Env
+        compilationStatus={compilationStatus ?? null}
+        env={env}
+        src={src}
+        input={input}
+        setInput={setInput}
+      />
+      <Toaster />
     </div>
   );
 };
@@ -141,66 +220,53 @@ const RIGHT_TABS_LABEL = {
   validation: "Validation result",
 } satisfies Record<RightTab, string>;
 
-const Env = ({ env, src }: { env: Analysis; src: string }) => {
-  const [input, setInput] = useState<wasm.Input | null>(null);
-  const [output, setOutput] = useState<wasm.Output | null>(null);
+type EnvProps = {
+  compilationStatus: CompilationStatus | null;
+  env: Analysis;
+  src: string;
+  input: Input | null;
+  setInput: (input: Input | null) => void;
+};
+const Env = ({ compilationStatus, env, src, input, setInput }: EnvProps) => {
+  const { data: output } = useQuery(
+    ["runAnalysis", src, input],
+    ({}) => {
+      if (!input) return void 0;
 
-  const realReferenceOutput = output?.markdown ?? "";
+      return core.run_analysis(src, input);
+    },
+    {
+      keepPreviousData: true,
+    }
+  );
 
-  const [referenceOutput, setReferenceOutput] = useState(realReferenceOutput);
+  const referenceOutput = output?.markdown ?? "";
+
   const [tab, setTab] = useState<RightTab>("reference");
   const [inFlight, setInFlight] = useState(false);
   const [response, setResponse] = useState<null | AnalysisResponse>(null);
-  const [compilationStatus, setCompilationStatus] =
-    useState<null | CompilationStatus>(null);
-
-  const realReferenceOutputRef = useRef(realReferenceOutput);
-  realReferenceOutputRef.current = realReferenceOutput;
 
   useEffect(() => {
     if (input || !inputted.input) return;
+    const json = inputted.input;
 
-    try {
-      const fullInput = wasm.complete_input_from_json(env, inputted.input);
-      setInput(fullInput);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [env, input]);
-
-  useEffect(() => {
-    const aborts = [] as (() => void)[];
-
-    const interval = setInterval(() => {
-      aborts.forEach((a) => a());
-      aborts.slice(0, aborts.length);
-      const { abort, promise } = api.compilationStatus();
-      aborts.push(abort);
-      promise
-        .then((res) => {
-          setCompilationStatus((old) => {
-            if (deepEqual(old, res)) return old;
-            console.log("got new");
-            return res;
-          });
-        })
-        .catch((e) => {
-          if (e.name != "AbortError") console.error("analysis error:", e);
-        });
-    }, 200);
-
-    return () => {
-      aborts.forEach((a) => a());
-      aborts.splice(0, aborts.length);
-      clearInterval(interval);
+    const run = async () => {
+      try {
+        const fullInput = await core.complete_input_from_json(env, json);
+        setInput(fullInput);
+      } catch (e) {
+        console.error(e);
+      }
     };
-  }, []);
+
+    run();
+  }, [env, input]);
 
   useEffect(() => {
     if (
       !input ||
       !compilationStatus ||
-      compilationStatus.state != CompilerState.Compiled
+      compilationStatus.state.type != "Compiled"
     )
       return;
 
@@ -213,7 +279,8 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
 
     setInFlight(true);
 
-    const { promise, abort } = api.analyze({
+    const controller = new AbortController();
+    const promise = api.analyze(controller.signal, {
       analysis: env,
       input: input.json,
       src,
@@ -223,13 +290,12 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
       .then((res) => {
         setInFlight(false);
         setResponse(res);
-        setReferenceOutput(realReferenceOutputRef.current);
       })
       .catch((e) => {
         if (e.name != "AbortError") console.error("analysis error:", e);
       });
 
-    return () => abort();
+    return () => controller.abort();
   }, [compilationStatus, src, input]);
 
   useEffect(() => {
@@ -237,42 +303,34 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
       (inputted.input ? input : true) &&
       (input ? input.analysis != env : true)
     ) {
-      try {
-        const input = wasm.generate_input_for(src, env);
-        setInput(input);
-      } catch (e) {
-        console.error(e);
-      }
+      const run = async () => {
+        try {
+          const input = await core.generate_input_for(src, env);
+          setInput(input ?? null);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      run();
     }
-  }, [env, input, src]);
+  }, [env, compilationStatus, input, src]);
 
-  useEffect(() => {
-    if (!input) return;
+  const indicatorState = computeIndicatorState({
+    inFlight,
+    compilationStatus,
+    response,
+  });
 
-    try {
-      const output = wasm.run_analysis(src, input);
-      setOutput(output);
-    } catch (e) {
-      console.error(e);
+  const generateInput = useMutation(
+    ({ src, env }: { src: string; env: Analysis }) =>
+      core.generate_input_for(src, env),
+    {
+      onSuccess: (data) => {
+        setInput(data ?? null);
+      },
     }
-  }, [src, env, input]);
-
-  const indicatorState =
-    inFlight || compilationStatus?.state != CompilerState.Compiled
-      ? IndicatorState.Working
-      : response
-      ? response.validation_result
-        ? response.validation_result.type == "CorrectTerminated"
-          ? IndicatorState.Correct
-          : response.validation_result.type == "CorrectNonTerminated"
-          ? IndicatorState.Correct
-          : response.validation_result.type == "Mismatch"
-          ? IndicatorState.Mismatch
-          : response.validation_result.type == "TimeOut"
-          ? IndicatorState.TimeOut
-          : IndicatorState.Working
-        : IndicatorState.Error
-      : IndicatorState.Error;
+  );
 
   return (
     <>
@@ -285,7 +343,7 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
         </div>
         <button
           className="p-1.5 hover:bg-slate-600 transition text-slate-100 rounded-tr"
-          onClick={() => setInput(wasm.generate_input_for(src, env))}
+          onClick={() => generateInput.mutate({ src, env })}
         >
           <ArrowPathRoundedSquareIcon className="w-3" />
         </button>
@@ -300,7 +358,33 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
           <Indicator state={indicatorState} />
         </div>
       </div>
-      {response ? (
+      {compilationStatus?.state.type == "CompileError" ? (
+        <div
+          className={
+            "relative col-span-2 grid grid-cols-2 transition duration-700 " +
+            (inFlight ? "blur-sm delay-100" : "")
+          }
+        >
+          <div className="w-full space-y-2 px-4 py-2">
+            <h3 className="text-lg font-bold italic text-white">
+              Compilation Error
+            </h3>
+            <div className="prose prose-invert w-full max-w-none prose-pre:whitespace-pre-wrap prose-table:w-full">
+              <pre className="whitespace-pre-wrap">
+                <AnsiSpans code={compilationStatus.state.content.stdout} />
+              </pre>
+            </div>
+          </div>
+          <div className="w-full space-y-2 px-4 py-2">
+            <h3 className="text-lg font-bold italic text-transparent">Error</h3>
+            <div className="prose prose-invert w-full max-w-none prose-pre:whitespace-pre-wrap prose-table:w-full">
+              <pre className="whitespace-pre-wrap">
+                <AnsiSpans code={compilationStatus.state.content.stderr} />
+              </pre>
+            </div>
+          </div>
+        </div>
+      ) : response ? (
         <div
           className={
             "relative col-span-2 grid grid-cols-2 transition duration-700 " +
@@ -311,13 +395,74 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
           <div className="absolute inset-0 grid grid-cols-2 justify-center divide-slate-600 overflow-y-auto bg-slate-800">
             {response.validation_result ? (
               <div className="flex w-full max-w-prose flex-col space-y-2 bg-slate-800 px-4 py-2 text-xl text-white">
-                <h3 className="text-lg">Output</h3>
-                <div className="prose prose-invert w-full max-w-none prose-table:w-full">
-                  <ReactMarkdown
-                    children={response.parsed_markdown ?? ""}
-                    remarkPlugins={[remarkGfm]}
-                  />
-                </div>
+                {response.validation_result.type == "InvalidOutput" ? (
+                  <>
+                    <h3 className="text-lg">Invalid Output</h3>
+                    <div className="prose prose-invert w-full max-w-none prose-table:w-full">
+                      <ReactMarkdown
+                        children={[
+                          "Failed to parse output. Make sure that it is valid JSON, and it has the correct structure.",
+
+                          "**Error:**",
+                          "```\n" +
+                            (response.validation_result.content.error ?? "") +
+                            "\n```",
+
+                          "**Your output:**",
+
+                          "```\n" +
+                            response.validation_result.content.output.trim() +
+                            "\n```",
+
+                          ...(response.validation_result.content
+                            .expected_output_format
+                            ? [
+                                "**Expected output format:**",
+
+                                "```\n" +
+                                  response.validation_result.content.expected_output_format.trim() +
+                                  "\n```",
+                              ]
+                            : []),
+                        ].join("\n\n")}
+                        remarkPlugins={[remarkGfm]}
+                      />
+                    </div>
+                  </>
+                ) : response.validation_result.type == "InvalidInput" ? (
+                  <>
+                    <h3 className="text-lg">Invalid Input</h3>
+                    <div className="prose prose-invert w-full max-w-none prose-table:w-full">
+                      <ReactMarkdown
+                        children={[
+                          "The input was invalid. Consider regenerating it.",
+
+                          "**Error:**",
+                          "```\n" +
+                            (response.validation_result.content.error ?? "") +
+                            "\n```",
+
+                          "**Given input:**",
+
+                          "```\n" +
+                            response.validation_result.content.input.trim() +
+                            "\n```",
+                        ].join("\n\n")}
+                        remarkPlugins={[remarkGfm]}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg">Output</h3>
+                    <div className="prose prose-invert w-full max-w-none prose-table:w-full">
+                      <ReactMarkdown
+                        children={response.parsed_markdown ?? ""}
+                        remarkPlugins={[remarkGfm]}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flux w-full space-y-2 px-4 py-2">
@@ -352,7 +497,7 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
                   />
                 ) : tab == "stderr" ? (
                   <pre className="whitespace-pre-wrap">
-                    <AnsiSpans code={response.stdout} />
+                    <AnsiSpans code={response.stderr} />
                   </pre>
                 ) : tab == "stdout" ? (
                   <pre className="whitespace-pre-wrap">
@@ -376,6 +521,58 @@ const Env = ({ env, src }: { env: Analysis; src: string }) => {
       )}
     </>
   );
+};
+
+const computeIndicatorState = ({
+  inFlight,
+  compilationStatus,
+  response,
+}: {
+  inFlight: boolean;
+  compilationStatus: CompilationStatus | null;
+  response: AnalysisResponse | null;
+}) => {
+  if (inFlight || !compilationStatus) return IndicatorState.Working;
+
+  if (compilationStatus.state.type == "CompileError")
+    return IndicatorState.Error;
+
+  if (compilationStatus.state.type != "Compiled") return IndicatorState.Working;
+
+  if (!response || !response.validation_result) return IndicatorState.Error;
+
+  if (
+    response.validation_result.type == "CorrectTerminated" ||
+    response.validation_result.type == "CorrectNonTerminated"
+  )
+    return IndicatorState.Correct;
+
+  if (response.validation_result.type == "Mismatch")
+    return IndicatorState.Mismatch;
+
+  if (response.validation_result.type == "InvalidOutput")
+    return IndicatorState.Mismatch;
+
+  if (response.validation_result.type == "InvalidInput")
+    return IndicatorState.Mismatch;
+
+  if (response.validation_result.type == "TimeOut")
+    return IndicatorState.TimeOut;
+
+  return IndicatorState.Working;
+};
+
+const PredicateEvaluation = ({ predicate }: { predicate: string }) => {
+  useEffect(() => {
+    const run = async () => {
+      const result = await import("../lib/z3");
+      console.log({ result });
+    };
+
+    run();
+  });
+
+  return <code>{predicate} ✅❌⏳</code>;
 };
 
 const AnsiSpans = ({ code }: { code: string }) => (
@@ -414,7 +611,11 @@ const AnsiSpans = ({ code }: { code: string }) => (
           s.color.name in colors ? colors[s.color.name] : s.color.name;
       if (s.italic) values.fontStyle = "italic";
 
-      return <span style={values}>{s.text}</span>;
+      return (
+        <span key={s.text} style={values}>
+          {s.text}
+        </span>
+      );
     })}
   </>
 );

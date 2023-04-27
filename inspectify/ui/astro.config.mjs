@@ -1,5 +1,5 @@
 import { defineConfig } from "astro/config";
-import wasm from "vite-plugin-wasm";
+import { execSync } from "child_process";
 
 // https://astro.build/config
 import tailwind from "@astrojs/tailwind";
@@ -13,6 +13,11 @@ import mdx from "@astrojs/mdx";
 // https://astro.build/config
 import compress from "astro-compress";
 
+const commitHash =
+  process.env.GITHUB_REF_NAME ??
+  execSync("git describe --dirty").toString().trimEnd();
+process.env.INSPECTIFY_VERSION = commitHash;
+
 // https://astro.build/config
 export default defineConfig({
   server: {
@@ -23,15 +28,8 @@ export default defineConfig({
     format: "file",
   },
   vite: {
-    server: {
-      fs: {
-        strict: false,
-        // allow: ["../wasm/pkg"],
-      },
-    },
     build: {
       target: "esnext",
     },
-    plugins: [wasm()],
   },
 });

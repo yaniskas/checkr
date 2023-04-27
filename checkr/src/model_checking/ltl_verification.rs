@@ -74,7 +74,7 @@ mod test {
     #[test]
     fn set_0_forever() {
         let program = "
-        n := 0;
+        n := 0
         ";
         verify_satisfies(program, "[]{n >= 0}");
     }
@@ -82,7 +82,7 @@ mod test {
     #[test]
     fn set_1_eventually() {
         let program = "
-        n := 1;
+        n := 1
         ";
         verify_satisfies(program, "<>{n >= 1}");
     }
@@ -99,7 +99,7 @@ mod test {
     fn set_below_0() {
         let program = "
         n := 0;
-        n := -1;
+        n := -1
         ";
         verify_not_satisfies(program, "[]{n >= 0}");
     }

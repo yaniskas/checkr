@@ -1,0 +1,10 @@
+layout {
+    pane split_direction="vertical" {
+        pane command="just" {
+            args "watch-web"
+        }
+        pane command="just" {
+            args "watch-inspectify"
+        }
+    }
+}

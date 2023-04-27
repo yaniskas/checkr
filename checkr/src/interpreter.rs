@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{AExpr, AOp, BExpr, LogicOp, RelOp, Target},
+    ast::{AExpr, AOp, BExpr, Function, Int, LogicOp, RelOp, Target},
     pg::{Action, Node, ProgramGraph},
     sign::Memory,
 };
 
 pub struct Interpreter {}
 
-pub type InterpreterMemory = Memory<i64, Vec<i64>>;
+pub type InterpreterMemory = Memory<Int, Vec<Int>>;
 
 impl InterpreterMemory {
     pub fn zero(pg: &ProgramGraph) -> InterpreterMemory {
@@ -16,42 +16,25 @@ impl InterpreterMemory {
     }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub struct Configuration<N = Node> {
-    pub node: N,
-    pub memory: InterpreterMemory
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "Case")]
-pub enum ProgramState {
+pub enum TerminationState {
     Running,
     Stuck,
     Terminated,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ProgramTrace<N = Node> {
-    pub state: ProgramState,
+pub struct Configuration<N = Node> {
     pub node: N,
     pub memory: InterpreterMemory,
 }
 
-impl<A> ProgramTrace<A> {
-    pub fn map_node<B>(self, f: impl FnOnce(A) -> B) -> ProgramTrace<B> {
-        ProgramTrace {
-            state: self.state,
+impl<A> Configuration<A> {
+    pub fn map_node<B>(self, f: impl FnOnce(A) -> B) -> Configuration<B> {
+        Configuration {
             node: f(self.node),
             memory: self.memory,
-        }
-    }
-}
-
-impl<T: Clone> ProgramTrace<T> {
-    pub fn to_configuration(&self) -> Configuration<T> {
-        Configuration {
-            node: self.node.clone(),
-            memory: self.memory.clone()
         }
     }
 }
@@ -79,37 +62,32 @@ impl Interpreter {
         mut steps: u64,
         memory: InterpreterMemory,
         pg: &ProgramGraph,
-    ) -> Vec<ProgramTrace> {
-        let mut state = ProgramTrace {
-            state: ProgramState::Running,
+    ) -> (Vec<Configuration>, TerminationState) {
+        let mut state = Configuration {
             node: Node::Start,
             memory,
         };
         let mut trace = vec![state.clone()];
 
-        while state.state == ProgramState::Running {
-            let potential_next_configurations = next_configurations(pg, &state.to_configuration());
+        let termination = loop {
+            if steps < 2 {
+                break TerminationState::Running;
+            }
+            steps -= 1;
+
+            let potential_next_configurations = next_configurations(pg, &state);
 
             let next_state = match potential_next_configurations.into_iter().next() {
-                Some(s) => ProgramTrace {
-                    state: ProgramState::Running,
-                    node: s.1.node,
-                    memory: s.1.memory
-                },
-                None if state.node == Node::End => ProgramTrace { state: ProgramState::Terminated, ..state },
-                None => ProgramTrace { state: ProgramState::Stuck, ..state}
+                Some(s) => s.1,
+                None if state.node == Node::End => break TerminationState::Terminated,
+                None => break TerminationState::Stuck,
             };
             state = next_state;
 
             trace.push(state.clone());
+        };
 
-            if steps == 0 {
-                break;
-            }
-            steps -= 1;
-        }
-
-        trace
+        (trace, termination)
     }
 }
 
@@ -122,7 +100,9 @@ impl Action {
                     m2.variables.insert(x.clone(), a.semantics(m)?);
                     Ok(m2)
                 } else {
-                    todo!("variable '{x}' is not in memory")
+                    Err(InterpreterError::VariableNotFound {
+                        name: x.to_string(),
+                    })
                 }
             }
             Action::Assignment(Target::Array(arr, idx), a) => {
@@ -156,7 +136,7 @@ impl Action {
 }
 
 impl AExpr {
-    pub fn semantics(&self, m: &InterpreterMemory) -> Result<i64, InterpreterError> {
+    pub fn semantics(&self, m: &InterpreterMemory) -> Result<Int, InterpreterError> {
         Ok(match self {
             AExpr::Number(n) => *n,
             AExpr::Reference(Target::Variable(x)) => {
@@ -187,7 +167,59 @@ impl AExpr {
                 }
             }
             AExpr::Binary(l, op, r) => op.semantic(l.semantics(m)?, r.semantics(m)?)?,
-            AExpr::Minus(n) => -n.semantics(m)?,
+            AExpr::Minus(n) => (n.semantics(m)?)
+                .checked_neg()
+                .ok_or(InterpreterError::ArithmeticOverflow)?,
+            AExpr::Function(f) => match f {
+                Function::Division(l, r) => {
+                    AOp::Divide.semantic(l.semantics(m)?, r.semantics(m)?)?
+                }
+                Function::Min(x, y) => x.semantics(m)?.min(y.semantics(m)?),
+                Function::Max(x, y) => x.semantics(m)?.max(y.semantics(m)?),
+                Function::Count(arr, x) | Function::LogicalCount(arr, x) => {
+                    let data = if let Some(data) = m.arrays.get(arr) {
+                        data
+                    } else {
+                        return Err(InterpreterError::ArrayNotFound {
+                            name: arr.to_string(),
+                        });
+                    };
+                    let x = x.semantics(m)?;
+                    data.iter().filter(|e| **e == x).count() as _
+                }
+                Function::Length(arr) | Function::LogicalLength(arr) => {
+                    let data = if let Some(data) = m.arrays.get(arr) {
+                        data
+                    } else {
+                        return Err(InterpreterError::ArrayNotFound {
+                            name: arr.to_string(),
+                        });
+                    };
+                    data.len() as _
+                }
+                Function::Fac(x) => {
+                    let x = x.semantics(m)?;
+                    if x < 0 {
+                        return Err(InterpreterError::OutsideFunctionDomain);
+                    }
+                    (1..=x)
+                        .fold(Some(1 as Int), |acc, x| acc?.checked_mul(x))
+                        .ok_or(InterpreterError::ArithmeticOverflow)?
+                }
+                Function::Fib(x) => {
+                    let x = x.semantics(m)?;
+                    if x < 0 {
+                        return Err(InterpreterError::OutsideFunctionDomain);
+                    }
+                    (0..x)
+                        .fold(Some((0 as Int, 1)), |acc, _| {
+                            let (a, b) = acc?;
+                            Some((b, a.checked_add(b)?))
+                        })
+                        .map(|(x, _)| x)
+                        .ok_or(InterpreterError::ArithmeticOverflow)?
+                }
+            },
         })
     }
 }
@@ -203,18 +235,26 @@ pub enum InterpreterError {
     #[error("array '{name}' not found")]
     ArrayNotFound { name: String },
     #[error("index {index} in '{name}' is out-of-bounds")]
-    IndexOutOfBound { name: String, index: i64 },
+    IndexOutOfBound { name: String, index: Int },
     #[error("no progression")]
     NoProgression,
     #[error("an arithmetic operation overflowed")]
     ArithmeticOverflow,
+    #[error("tried to evaluate a quantified expression")]
+    EvaluateQuantifier,
+    #[error("tried to evaluate function where argument was outside of domain")]
+    OutsideFunctionDomain,
 }
 
 impl AOp {
-    pub fn semantic(&self, l: i64, r: i64) -> Result<i64, InterpreterError> {
+    pub fn semantic(&self, l: Int, r: Int) -> Result<Int, InterpreterError> {
         Ok(match self {
-            AOp::Plus => l + r,
-            AOp::Minus => l - r,
+            AOp::Plus => l
+                .checked_add(r)
+                .ok_or(InterpreterError::ArithmeticOverflow)?,
+            AOp::Minus => l
+                .checked_sub(r)
+                .ok_or(InterpreterError::ArithmeticOverflow)?,
             AOp::Times => l
                 .checked_mul(r)
                 .ok_or(InterpreterError::ArithmeticOverflow)?,
@@ -244,12 +284,13 @@ impl BExpr {
             BExpr::Rel(l, op, r) => op.semantic(l.semantics(m)?, r.semantics(m)?),
             BExpr::Logic(l, op, r) => op.semantic(l.semantics(m)?, || r.semantics(m))?,
             BExpr::Not(b) => !b.semantics(m)?,
+            BExpr::Quantified(_, _, _) => return Err(InterpreterError::EvaluateQuantifier),
         })
     }
 }
 
 impl RelOp {
-    pub fn semantic(&self, l: i64, r: i64) -> bool {
+    pub fn semantic(&self, l: Int, r: Int) -> bool {
         match self {
             RelOp::Eq => l == r,
             RelOp::Ne => l != r,
@@ -277,6 +318,10 @@ impl LogicOp {
             LogicOp::Lor => {
                 let r = r()?;
                 l || r
+            }
+            LogicOp::Implies => {
+                let r = r()?;
+                !l || r
             }
         })
     }

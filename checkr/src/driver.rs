@@ -1,14 +1,14 @@
 use std::{
     path::{Path, PathBuf},
-    process::Command,
     time::Duration,
 };
 
+use tokio::process::Command;
 use tracing::error;
 
 use crate::{
     ast::Commands,
-    env::{Analysis, Environment},
+    env::{Analysis, EnvError, Environment, Output},
 };
 
 pub struct Driver {
@@ -21,7 +21,7 @@ pub struct Driver {
 pub enum DriverError {
     #[error("running compile failed")]
     RunCompile(#[source] std::io::Error),
-    #[error("failed to compile:\n  {}", std::str::from_utf8(&_0.stdout).unwrap())]
+    #[error("failed to compile:\n  {}\n\n  {}", std::str::from_utf8(&_0.stdout).unwrap(), std::str::from_utf8(&_0.stderr).unwrap())]
     CompileFailure(std::process::Output),
 }
 
@@ -35,12 +35,12 @@ pub enum ExecError {
         #[source]
         source: std::io::Error,
     },
-    #[error("command failed:\n{:?}", _0.stdout)]
+    #[error("command failed:\n  {}\n\n  {}", std::str::from_utf8(&_0.stdout).unwrap(), std::str::from_utf8(&_0.stderr).unwrap())]
     CommandFailed(std::process::Output, Duration),
     #[error("parse failed")]
     Parse {
         #[source]
-        inner: serde_json::Error,
+        inner: EnvError,
         run_output: std::process::Output,
         time: Duration,
     },
@@ -54,7 +54,7 @@ impl Driver {
             compile_output: None,
         }
     }
-    pub fn compile(
+    pub async fn compile(
         dir: impl AsRef<Path>,
         compile: &str,
         run_cmd: &str,
@@ -66,7 +66,7 @@ impl Driver {
         cmd.args(args);
         cmd.current_dir(&dir);
 
-        let compile_output = cmd.output().map_err(DriverError::RunCompile)?;
+        let compile_output = cmd.output().await.map_err(DriverError::RunCompile)?;
 
         if !compile_output.status.success() {
             return Err(DriverError::CompileFailure(compile_output));
@@ -89,10 +89,10 @@ impl Driver {
     }
     pub async fn exec_dyn_raw_cmds(
         &self,
-        analysis: &Analysis,
+        analysis: Analysis,
         cmds: &str,
         input: &str,
-    ) -> Result<ExecOutput<serde_json::Value>, ExecError> {
+    ) -> Result<ExecOutput<Output>, ExecError> {
         let mut cmd = self.new_command();
         cmd.arg(analysis.command());
         cmd.arg(cmds);
@@ -100,7 +100,7 @@ impl Driver {
         cmd.arg(input);
 
         let before = std::time::Instant::now();
-        let cmd_output = cmd.output().map_err(|source| ExecError::RunExec {
+        let cmd_output = cmd.output().await.map_err(|source| ExecError::RunExec {
             cmd: self.run_cmd.clone(),
             source,
         })?;
@@ -115,7 +115,7 @@ impl Driver {
             return Err(ExecError::CommandFailed(cmd_output, took));
         }
 
-        match serde_json::from_slice(&cmd_output.stdout) {
+        match analysis.output_from_slice(&cmd_output.stdout) {
             Ok(parsed) => Ok(ExecOutput {
                 output: cmd_output,
                 parsed,
@@ -134,17 +134,17 @@ impl Driver {
         input: &E::Input,
     ) -> Result<ExecOutput<E::Output>, ExecError>
     where
-        E: Environment,
+        E: Environment + ?Sized,
     {
         let output = self
             .exec_dyn_raw_cmds(
-                &E::ANALYSIS,
+                E::ANALYSIS,
                 cmds,
                 &serde_json::to_string(input).map_err(ExecError::Serialize)?,
             )
             .await?;
 
-        match serde_json::from_value(output.parsed) {
+        match output.parsed.parsed::<E>() {
             Ok(parsed) => Ok(ExecOutput {
                 output: output.output,
                 parsed,
@@ -163,7 +163,7 @@ impl Driver {
         input: &E::Input,
     ) -> Result<ExecOutput<E::Output>, ExecError>
     where
-        E: Environment,
+        E: Environment + ?Sized,
     {
         self.exec_raw_cmds::<E>(&cmds.to_string(), input).await
     }

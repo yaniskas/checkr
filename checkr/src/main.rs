@@ -3,6 +3,7 @@ use clap::Parser;
 use checkr::{env::Analysis, parse};
 
 #[derive(Debug, Parser)]
+#[command(version)]
 enum Cli {
     /// Reference subcommand
     Reference {
@@ -28,7 +29,7 @@ fn main() -> color_eyre::Result<()> {
             input,
         } => {
             let cmds = parse::parse_commands(&src)?;
-            let output = analysis.run(&cmds, &input)?;
+            let output = analysis.run(&cmds, analysis.input_from_str(&input)?)?;
 
             println!("{output}");
 

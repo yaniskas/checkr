@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
-use serde_json_any_key::any_key_map;
 
 use crate::pg::{Edge, Node, ProgramGraph};
 
@@ -90,13 +89,9 @@ impl Worklist for LiFo {
 //     }
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisResults<A: MonotoneFramework> {
-    #[serde(with = "any_key_map")]
-    #[serde(bound(deserialize = "A::Domain: 'de + serde::Deserialize<'de>"))]
     pub facts: HashMap<Node, A::Domain>,
-    #[serde(skip)]
     pub semantic_calls: usize,
 }
 
@@ -218,5 +213,34 @@ where
                 false
             }
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NodeOrder<'a> {
+    First,
+    Middle(i32),
+    Random(&'a str),
+    Last,
+}
+
+impl<'a> NodeOrder<'a> {
+    pub fn parse(n: &'a str) -> Self {
+        match n {
+            _ if n.contains('▷') => NodeOrder::First,
+            "qS" => NodeOrder::First,
+
+            _ if n.contains('◀') => NodeOrder::Last,
+            "qF" => NodeOrder::Last,
+
+            _ if n.contains(|c: char| c.is_numeric()) => NodeOrder::Middle(
+                n.chars()
+                    .filter(|c| c.is_numeric())
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or_default(),
+            ),
+            _ => NodeOrder::Random(n),
+        }
     }
 }

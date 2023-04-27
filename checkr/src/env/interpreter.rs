@@ -1,15 +1,16 @@
 use itertools::{chain, Itertools};
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     ast::Commands,
     generation::Generate,
-    interpreter::{Interpreter, InterpreterMemory, ProgramState, ProgramTrace},
+    interpreter::{Configuration, Interpreter, InterpreterMemory, TerminationState},
     pg::{Determinism, Node, ProgramGraph},
     sign::{Memory, MemoryRef},
 };
 
-use super::{Analysis, Environment, Markdown, ToMarkdown, ValidationResult};
+use super::{Analysis, EnvError, Environment, Markdown, ToMarkdown, ValidationResult};
 
 #[derive(Debug)]
 pub struct InterpreterEnv;
@@ -18,7 +19,7 @@ pub struct InterpreterEnv;
 pub struct InterpreterInput {
     pub determinism: Determinism,
     pub assignment: InterpreterMemory,
-    pub trace_size: u64,
+    pub trace_length: u64,
 }
 
 impl Generate for InterpreterInput {
@@ -35,9 +36,11 @@ impl Generate for InterpreterInput {
             },
         );
         InterpreterInput {
-            determinism: Determinism::Deterministic,
+            determinism: *[Determinism::Deterministic, Determinism::NonDeterministic]
+                .choose(rng)
+                .unwrap(),
             assignment,
-            trace_size: rng.gen_range(10..=15),
+            trace_length: rng.gen_range(10..=15),
         }
     }
 }
@@ -69,24 +72,30 @@ impl ToMarkdown for InterpreterInput {
                 .to_string(),
         ]);
 
+        table.add_row(["Trace length:".to_string(), self.trace_length.to_string()]);
+
         format!("{table}").into()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InterpreterOutput(Vec<ProgramTrace<String>>);
+pub struct InterpreterOutput {
+    execution_sequence: Vec<Configuration<String>>,
+    #[serde(rename = "final")]
+    final_state: TerminationState,
+}
 
 impl ToMarkdown for InterpreterOutput {
     fn to_markdown(&self) -> Markdown {
         let variables = self
-            .0
+            .execution_sequence
             .iter()
             .flat_map(|t| t.memory.variables.keys().map(|k| k.to_string()))
             .sorted()
             .dedup()
             .collect_vec();
         let arrays = self
-            .0
+            .execution_sequence
             .iter()
             .flat_map(|t| t.memory.arrays.keys().map(|k| k.to_string()))
             .sorted()
@@ -102,36 +111,35 @@ impl ToMarkdown for InterpreterOutput {
                 arrays.iter().cloned()
             ));
 
-        for t in &self.0 {
-            match t.state {
-                ProgramState::Running => {
-                    table.add_row(chain!(
-                        [t.node.to_string()],
-                        chain!(
-                            t.memory
-                                .variables
-                                .iter()
-                                .map(|(var, value)| (value.to_string(), var.to_string()))
-                                .sorted_by_key(|(_, k)| k.to_string()),
-                            t.memory
-                                .arrays
-                                .iter()
-                                .map(|(arr, values)| {
-                                    (format!("[{}]", values.iter().format(",")), arr.to_string())
-                                })
-                                .sorted_by_key(|(_, k)| k.to_string()),
-                        )
-                        .map(|(v, _)| v),
-                    ));
-                }
-                ProgramState::Stuck => {
-                    table.add_row(["**Stuck**".to_string()]);
-                }
-                ProgramState::Terminated => {
-                    table.add_row(["**Terminated successfully**".to_string()]);
-                }
-            }
+        for t in &self.execution_sequence {
+            table.add_row(chain!(
+                [t.node.to_string()],
+                chain!(
+                    t.memory
+                        .variables
+                        .iter()
+                        .map(|(var, value)| (value.to_string(), var.to_string()))
+                        .sorted_by_key(|(_, k)| k.to_string()),
+                    t.memory
+                        .arrays
+                        .iter()
+                        .map(|(arr, values)| {
+                            (format!("[{}]", values.iter().format(",")), arr.to_string())
+                        })
+                        .sorted_by_key(|(_, k)| k.to_string()),
+                )
+                .map(|(v, _)| v),
+            ));
         }
+        let final_message = match self.final_state {
+            TerminationState::Running => {
+                format!("**Stopped after {} steps**", self.execution_sequence.len())
+            }
+            TerminationState::Stuck => "**Stuck**".to_string(),
+            TerminationState::Terminated => "**Terminated successfully**".to_string(),
+        };
+        table.add_row([final_message]);
+
         format!("{table}").into()
     }
 }
@@ -143,14 +151,19 @@ impl Environment for InterpreterEnv {
 
     const ANALYSIS: Analysis = Analysis::Interpreter;
 
-    fn run(&self, cmds: &Commands, input: &Self::Input) -> Self::Output {
+    fn run(&self, cmds: &Commands, input: &Self::Input) -> Result<Self::Output, EnvError> {
         let pg = ProgramGraph::new(input.determinism, cmds);
-        InterpreterOutput(
-            Interpreter::evaluate(input.trace_size, input.assignment.clone(), &pg)
-                .into_iter()
-                .map(|t| t.map_node(|n| n.to_string()))
-                .collect(),
-        )
+        let (execution_sequence, final_state) =
+            Interpreter::evaluate(input.trace_length, input.assignment.clone(), &pg);
+        let execution_sequence = execution_sequence
+            .into_iter()
+            .map(|t| t.map_node(|n| n.to_string()))
+            .collect();
+
+        Ok(InterpreterOutput {
+            execution_sequence,
+            final_state,
+        })
     }
 
     fn validate(
@@ -158,14 +171,39 @@ impl Environment for InterpreterEnv {
         cmds: &Commands,
         input: &Self::Input,
         output: &Self::Output,
-    ) -> ValidationResult
+    ) -> Result<ValidationResult, EnvError>
     where
         Self::Output: PartialEq,
     {
+        if let TerminationState::Running = output.final_state {
+            if output.execution_sequence.len() < input.trace_length as usize {
+                return Ok(ValidationResult::Mismatch {
+                    reason: format!(
+                        "Not enough traces were produced. Expected '{}' found '{}'",
+                        input.trace_length,
+                        output.execution_sequence.len()
+                    ),
+                });
+            }
+        }
+
         let pg = ProgramGraph::new(input.determinism, cmds);
         let mut mem = vec![(Node::Start, input.assignment.clone())];
 
-        for (idx, trace) in output.0.iter().skip(1).enumerate() {
+        if let Some(first_cfg) = output.execution_sequence.first() {
+            if first_cfg.memory != input.assignment {
+                return Ok(ValidationResult::Mismatch {
+                    reason: "The initial configuration did not match the starting memory"
+                        .to_string(),
+                });
+            }
+        } else if input.trace_length > 0 {
+            return Ok(ValidationResult::Mismatch {
+                reason: "Did not produce any execution sequences".to_string(),
+            });
+        }
+
+        for (idx, trace) in output.execution_sequence.iter().skip(1).enumerate() {
             let mut next_mem = vec![];
 
             for (current_node, current_mem) in mem {
@@ -179,25 +217,27 @@ impl Environment for InterpreterEnv {
                 }
             }
             if next_mem.is_empty() {
-                match trace.state {
-                    ProgramState::Running => {
-                        return ValidationResult::Mismatch {
-                            reason: format!("The traces do not match after {idx} iterations"),
-                        };
-                    }
-                    ProgramState::Stuck => break,
-                    ProgramState::Terminated => break,
+                let is_last = idx + 1 == output.execution_sequence.len();
+
+                if is_last {
+                    // NOTE: They reached the last state at the same time we did
+                    break;
+                } else {
+                    // NOTE: We could not continue, while they had more execution steps left
+                    return Ok(ValidationResult::Mismatch {
+                        reason: format!("The traces do not match after {idx} iterations"),
+                    });
                 }
             }
             mem = next_mem;
         }
 
-        if output.0.len() < input.trace_size as usize {
-            ValidationResult::CorrectTerminated
+        if output.execution_sequence.len() < input.trace_length as usize {
+            Ok(ValidationResult::CorrectTerminated)
         } else {
-            ValidationResult::CorrectNonTerminated {
-                iterations: input.trace_size,
-            }
+            Ok(ValidationResult::CorrectNonTerminated {
+                iterations: output.execution_sequence.len() as _,
+            })
         }
     }
 }

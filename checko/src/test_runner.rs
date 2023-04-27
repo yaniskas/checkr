@@ -7,42 +7,55 @@
 //! a file within the container and are read from the outside to produce the
 //! final [`TestRunResults`].
 
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    process::Stdio,
+    time::{Duration, SystemTime},
+};
 
 use checkr::{
     driver::Driver,
-    env::{
-        Analysis, Environment, InterpreterEnv, ProgramVerificationEnv, SecurityEnv, SignEnv,
-        ValidationResult,
-    },
+    env::{self, Analysis, AnyEnvironment, Environment, ValidationResult},
 };
 use color_eyre::{
     eyre::{eyre, Context, ContextCompat},
     Result,
 };
-use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 use tracing::info;
-use xshell::Shell;
+use xshell::{cmd, Shell};
 
-use crate::{config::ProgramsConfig, docker::DockerImage, RunOption};
+use crate::{
+    config::{CanonicalProgramsConfig, ProgramId},
+    docker::DockerImage,
+    RunOption,
+};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestRunInput {
-    programs: ProgramsConfig,
+    programs: CanonicalProgramsConfig,
 }
 
 impl TestRunInput {
-    const RESULT_FILE: &'static str = "result.json";
-
     pub async fn run_in_docker(
         image: &DockerImage,
         cwd: &Path,
-        programs: ProgramsConfig,
+        programs: CanonicalProgramsConfig,
     ) -> Result<TestRunResults> {
         let input = serde_json::to_string(&TestRunInput { programs }).unwrap();
 
         const SINGLE_COMPETITION_CMD: &str = "internal-single-competition";
+
+        let checko_bin = cwd.join("checko-bin");
+
+        let checko_run = match image.kind {
+            crate::docker::ImageKind::ReuseHost => {
+                tokio::fs::copy(std::env::current_exe().unwrap(), &checko_bin).await?;
+                "./checko-bin"
+            }
+            crate::docker::ImageKind::Build => "checko",
+        };
 
         let mut cmd = image.run_cmd(&[
             "-w",
@@ -54,73 +67,109 @@ impl TestRunInput {
                     .wrap_err("failed to create a str from cwd when spawning docker")?
             ),
         ]);
-        cmd.args(["checko", SINGLE_COMPETITION_CMD]).arg(input);
+        cmd.args([checko_run, SINGLE_COMPETITION_CMD]);
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        info!("spawning docker container: {}", format_cmd(&cmd));
-        let output = cmd
-            .output()
+        let start = std::time::Instant::now();
+        info!(container_name = image.name(), "spawning docker container");
+        let mut child = cmd.spawn().wrap_err("Failed to spawn Docker container")?;
+        let mut child_stdin = child.stdin.take().unwrap();
+        child_stdin
+            .write_all(input.as_bytes())
             .await
-            .wrap_err("Failed to spawn Docker container")?;
+            .wrap_err("Faild to write input to container")?;
+        drop(child_stdin);
+        let output = child
+            .wait_with_output()
+            .await
+            .wrap_err("Failed to complete Docker container")?;
         info!(
             status = output.status.to_string(),
+            duration = format!("{:?}", start.elapsed()),
             "docker container finished"
         );
+
+        match image.kind {
+            crate::docker::ImageKind::ReuseHost => {
+                tokio::fs::remove_file(&checko_bin).await?;
+            }
+            crate::docker::ImageKind::Build => {}
+        }
 
         if !output.status.success() {
             tracing::error!(
                 stdout = std::str::from_utf8(&output.stdout)?,
-                stderr = std::str::from_utf8(&output.stderr)?,
                 "running in docker failed"
             );
-            return Err(eyre!("Running in Docker failed: {cmd:?}"));
+            eprintln!("{}", std::str::from_utf8(&output.stderr)?);
+            return Err(eyre!("Running in Docker failed"));
         }
 
-        let output = tokio::fs::read_to_string(cwd.join(Self::RESULT_FILE))
-            .await
-            .wrap_err("failed to read result file")?;
+        let output = String::from_utf8(output.stdout)?
+            .lines()
+            .last()
+            .unwrap()
+            .to_string();
 
-        Ok(serde_json::from_str(&output)?)
+        serde_json::from_str(&output).wrap_err_with(|| format!("failed to deserialize {output:?}"))
     }
     pub async fn run_from_within_docker(sh: &Shell, input: &str) -> Result<()> {
         let input: Self = serde_json::from_str(input)?;
 
         let run: RunOption = toml::from_str(&sh.read_file("run.toml")?)?;
-        let driver = run.driver(sh.current_dir())?;
+        let data = match run.driver(sh.current_dir()).await {
+            Ok(driver) => GroupResults::generate(&input.programs, &driver).await?,
+            Err(err) => {
+                let msg = match err {
+                    checkr::driver::DriverError::RunCompile(output) => format!(
+                        "running '{}' failed:\n  {output}",
+                        run.compile.as_deref().unwrap_or("compiler"),
+                    ),
+                    checkr::driver::DriverError::CompileFailure(output) => format!(
+                        "failed to compile:\n  {}\n\n  {}",
+                        std::str::from_utf8(&output.stdout).unwrap(),
+                        std::str::from_utf8(&output.stderr).unwrap()
+                    ),
+                };
+                TestRunData::CompileError(msg)
+            }
+        };
 
-        let results = GroupResults::generate(&input.programs, &driver).await?;
+        let hash = cmd!(sh, "git rev-parse HEAD").quiet().read()?;
+        let results = TestRunResults {
+            ran_at: SystemTime::now(),
+            hash,
+            data,
+        };
 
-        sh.write_file(Self::RESULT_FILE, serde_json::to_string(&results)?)?;
+        println!("{}", serde_json::to_string(&results)?);
 
         Ok(())
     }
 }
 
-fn format_cmd(cmd: &tokio::process::Command) -> impl std::fmt::Display + '_ {
-    let cmd = cmd.as_std();
-
-    let program = Either::Left(Path::new(cmd.get_program()).display());
-
-    let program_args = cmd
-        .get_args()
-        .map(std::ffi::OsStr::to_string_lossy)
-        .map(Either::Right);
-
-    std::iter::once(program).chain(program_args).format(" ")
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct TestRunResults {
-    pub ran_at: std::time::SystemTime,
-    pub sections: Vec<TestRunResultsSection>,
+    pub ran_at: SystemTime,
+    pub hash: String,
+    pub data: TestRunData,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+pub enum TestRunData {
+    CompileError(String),
+    Sections(Vec<TestRunResultsSection>),
+}
+
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct TestRunResultsSection {
     pub analysis: Analysis,
     pub programs: Vec<TestResult>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub enum TestResultType {
     CorrectTerminated,
     CorrectNonTerminated { iterations: u64 },
@@ -129,13 +178,13 @@ pub enum TestResultType {
     Error { description: String },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct TestResult {
     pub analysis: Analysis,
-    pub src: String,
-    pub input_json: String,
+    pub id: ProgramId,
     pub result: TestResultType,
     pub time: Duration,
+    pub shown: bool,
 }
 
 impl TestResultType {
@@ -148,29 +197,33 @@ impl TestResultType {
 }
 
 struct GroupResults<'a> {
-    config: &'a ProgramsConfig,
+    config: &'a CanonicalProgramsConfig,
     driver: &'a Driver,
 
     sections: Vec<TestRunResultsSection>,
 }
 
 impl GroupResults<'_> {
-    async fn generate(config: &ProgramsConfig, driver: &Driver) -> Result<TestRunResults> {
+    async fn generate(config: &CanonicalProgramsConfig, driver: &Driver) -> Result<TestRunData> {
         let mut results = GroupResults {
             config,
             driver,
             sections: vec![],
         };
 
-        results.push(&InterpreterEnv).await;
-        results.push(&SignEnv).await;
-        results.push(&SecurityEnv).await;
-        results.push(&ProgramVerificationEnv).await;
+        for key in config.envs.keys() {
+            match key {
+                // NOTE: Skip graph
+                Analysis::Graph => {}
+                Analysis::Parse => results.push(&env::ParseEnv).await,
+                Analysis::Interpreter => results.push(&env::InterpreterEnv).await,
+                Analysis::ProgramVerification => results.push(&env::ProgramVerificationEnv).await,
+                Analysis::Sign => results.push(&env::SignEnv).await,
+                Analysis::Security => results.push(&env::SecurityEnv).await,
+            }
+        }
 
-        Ok(TestRunResults {
-            ran_at: std::time::SystemTime::now(),
-            sections: results.sections,
-        })
+        Ok(TestRunData::Sections(results.sections))
     }
     async fn push<E: Environment>(&mut self, env: &E) {
         self.sections.push(TestRunResultsSection {
@@ -181,24 +234,20 @@ impl GroupResults<'_> {
 }
 
 async fn generate_test_results<E: Environment>(
-    config: &ProgramsConfig,
+    config: &CanonicalProgramsConfig,
     env: &E,
     driver: &Driver,
 ) -> Vec<TestResult> {
     let mut results = vec![];
 
-    for program in &config.programs {
-        let builder = env.setup_generation().seed(Some(program.seed));
-        let generated = match program.src.as_ref() {
-            Some(src) => builder.from_cmds(checkr::parse::parse_commands(src).unwrap()),
-            None => builder.build(),
-        };
+    let Some(programs) = config.envs.get(&E::ANALYSIS) else { return vec![] };
 
+    for (pid, program) in programs.programs() {
+        let generated = program.generated_program(env.analysis()).unwrap();
         let summary = generated.run_analysis(env, driver).await;
         let result = TestResult {
             analysis: E::ANALYSIS,
-            src: summary.cmds.to_string(),
-            input_json: serde_json::to_string(&summary.input).expect("failed to serialize input"),
+            id: pid,
             result: match summary.result {
                 Ok(r) => match r {
                     ValidationResult::CorrectTerminated => TestResultType::CorrectTerminated,
@@ -213,6 +262,7 @@ async fn generate_test_results<E: Environment>(
                 },
             },
             time: summary.time,
+            shown: program.shown,
         };
 
         results.push(result);

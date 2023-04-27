@@ -16,6 +16,15 @@ pub struct Flow<T> {
     pub into: T,
 }
 
+impl<T> Flow<T> {
+    pub fn map<'a, S>(&'a self, f: impl Fn(&'a T) -> S) -> Flow<S> {
+        Flow {
+            from: f(&self.from),
+            into: f(&self.into),
+        }
+    }
+}
+
 impl<T> std::fmt::Debug for Flow<T>
 where
     T: std::fmt::Debug,
@@ -60,7 +69,7 @@ impl Command {
             })
             .collect(),
             Command::Skip => HashSet::default(),
-            Command::If(c) | Command::Loop(c) => {
+            Command::If(c) | Command::Loop(c) | Command::EnrichedLoop(_, c) => {
                 c.iter()
                     .fold(
                         (implicit.clone(), HashSet::default()),
@@ -75,6 +84,7 @@ impl Command {
                     )
                     .1
             }
+            Command::Annotated(_, c, _) => c.sec(implicit),
             Command::Break => HashSet::default(),
             Command::Continue => HashSet::default(),
         }
