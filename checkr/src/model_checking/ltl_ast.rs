@@ -1,10 +1,11 @@
-use std::{collections::HashSet, rc::Rc, fmt::Display};
+use std::{collections::BTreeSet, rc::Rc, fmt::Display};
 
-use crate::{ast::BExpr, parse::ParseError};
+use crate::{ast::BExpr, parse::ParseError, model_checking::traits::Add};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LTL {
     True,
+    False,
     Atomic(BExpr),
     And(Box<LTL>, Box<LTL>),
     Not(Box<LTL>),
@@ -45,6 +46,7 @@ impl LTL {
     pub fn reduced(self) -> ReducedLTL {
         match self {
             LTL::True => ReducedLTL::True,
+            LTL::False => ReducedLTL::Not(Rc::new(ReducedLTL::True)),
             LTL::Atomic(bexpr) => ReducedLTL::Atomic(bexpr),
             LTL::And(f1, f2) => ReducedLTL::And(Rc::new(f1.reduced()), Rc::new(f2.reduced())),
             LTL::Not(f) => ReducedLTL::Not(Rc::new(f.reduced())),
@@ -146,40 +148,44 @@ impl ReducedLTL {
     }
 }
 
-pub fn temporal_subformulae(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
-    let mut set = HashSet::new();
+pub fn temporal_subformulae(formula: &NegativeNormalLTL) -> BTreeSet<NegativeNormalLTL> {
+    temporal_subformulae_h(formula).add(NegativeNormalLTL::True)
+}
+
+fn temporal_subformulae_h(formula: &NegativeNormalLTL) -> BTreeSet<NegativeNormalLTL> {
+    let mut set = BTreeSet::new();
     match formula {
         NegativeNormalLTL::True | NegativeNormalLTL::False | NegativeNormalLTL::Atomic(_) | NegativeNormalLTL::NegAtomic(_) => {
             set.insert(formula.clone());
         },
         NegativeNormalLTL::And(f1, f2) => {
-            set.extend(temporal_subformulae(f1));
-            set.extend(temporal_subformulae(f2));
+            set.extend(temporal_subformulae_h(f1));
+            set.extend(temporal_subformulae_h(f2));
         }
         NegativeNormalLTL::Or(f1, f2) => {
-            set.extend(temporal_subformulae(f1));
-            set.extend(temporal_subformulae(f2));
+            set.extend(temporal_subformulae_h(f1));
+            set.extend(temporal_subformulae_h(f2));
         }
         NegativeNormalLTL::Next(f) => {
             set.insert(formula.clone());
-            set.extend(temporal_subformulae(f));
+            set.extend(temporal_subformulae_h(f));
         }
         NegativeNormalLTL::Until(f1, f2) => {
             set.insert(formula.clone());
-            set.extend(temporal_subformulae(f1));
-            set.extend(temporal_subformulae(f2));
+            set.extend(temporal_subformulae_h(f1));
+            set.extend(temporal_subformulae_h(f2));
         }
         NegativeNormalLTL::Release(f1, f2) => {
             set.insert(formula.clone());
-            set.extend(temporal_subformulae(f1));
-            set.extend(temporal_subformulae(f2));
+            set.extend(temporal_subformulae_h(f1));
+            set.extend(temporal_subformulae_h(f2));
         }
     }
     set
 }
 
-pub fn until_subformulae(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
-    let mut set = HashSet::new();
+pub fn until_subformulae(formula: &NegativeNormalLTL) -> BTreeSet<NegativeNormalLTL> {
+    let mut set = BTreeSet::new();
     match formula {
         NegativeNormalLTL::True | NegativeNormalLTL::False | NegativeNormalLTL::Atomic(_) | NegativeNormalLTL::NegAtomic(_) => {},
         NegativeNormalLTL::And(f1, f2) => {
@@ -258,7 +264,7 @@ pub fn parse_ltl(src: &str) -> Result<LTL, ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ast::{AExpr, RelOp}, model_checking::ltl_ast::tests::ltl::LTLParser};
+    use crate::ast::{AExpr, RelOp};
 
     use super::*;
 

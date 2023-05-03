@@ -213,4 +213,59 @@ mod test {
         ";
         verify_satisfies(program, "(){n = 1}");
     }
+
+    #[test]
+    fn skip_false() {
+        let program = "
+        skip
+        ";
+        verify_not_satisfies(program, "false");
+    }
+
+    #[test]
+    fn skip_true() {
+        let program = "
+        skip
+        ";
+        verify_satisfies(program, "true");
+    }
+
+    #[test]
+    fn nested_untils() {
+        let program = "
+        n := 1;
+        n := 2;
+        n := 3;
+        n := 4;
+        n := 5;
+        n := 6
+        ";
+        verify_satisfies(program, "({n < 3} U {n = 3}) U ({n < 6} U {n = 6})");
+    }
+
+    #[test]
+    fn nested_untils_false_left() {
+        let program = "
+        n := 1;
+        n := 10;
+        n := 3;
+        n := 4;
+        n := 5;
+        n := 6
+        ";
+        verify_not_satisfies(program, "({n < 3} U {n = 3}) U ({n < 6} U {n = 6})");
+    }
+
+    #[test]
+    fn nested_untils_false_right() {
+        let program = "
+        n := 1;
+        n := 2;
+        n := 3;
+        n := 4;
+        n := 10;
+        n := 6
+        ";
+        verify_not_satisfies(program, "({n < 3} U {n = 3}) U ({n < 6} U {n = 6})");
+    }
 }

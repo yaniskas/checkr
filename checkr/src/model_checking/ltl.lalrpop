@@ -48,6 +48,7 @@ UnaryLTL: LTL = {
 
 AtomicLTL: LTL = {
     "true" => LTL::True,
+    "false" => LTL::False,
     "{" <BExpr_> "}" => LTL::Atomic(<>),
     "(" <LTL> ")",
 }

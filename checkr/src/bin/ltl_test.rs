@@ -1,6 +1,7 @@
 use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}};
+use itertools::Itertools;
 
 fn main() {
     let program = "
@@ -55,12 +56,13 @@ fn main() {
     println!("\n\n\n\n\nCreating VWAA");
     let vwaa = dbg!(VWAA::from_ltl(&nn));
 
-    let vwaa_edges = vwaa.delta().iter()
+    let vwaa_edges = vwaa.delta.iter()
         .flat_map(|(source, targets)| {
             targets.iter().flat_map(move |(symcon, ltlcon)| {
-                match ltlcon {
-                    LTLConjunction::TT => vec! [format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, "tt", symcon)],
-                    LTLConjunction::Conjunction(ltlcon) => ltlcon.iter().map(move |ltl| {
+                if ltlcon.is_true() {
+                    vec! [format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, "tt", symcon)]
+                } else {
+                    ltlcon.get_raw_components().iter().map(move |ltl| {
                         format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, ltl, symcon)
                     }).collect()
                 }
@@ -82,12 +84,12 @@ fn main() {
     println!("\n\n\n\n\nCreating GBA");
     let gba = GBA::from_vwaa(vwaa);
 
-    println!("{}", gba.states.iter().map(|e| ltlset_string(e)).collect::<Vec<_>>().join(",\n"));
+    println!("{}", gba.states.iter().map(|e| e).join(",\n"));
 
     let gba_edges = gba.delta.iter()
         .flat_map(|(source, targets)| {
             targets.iter().map(move |(symcon, target)| {
-                format!("\"{}\" -> \"{}\" [label = \"{}\"]", ltlset_string(source), ltlset_string(target), symcon)
+                format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, target, symcon)
             })
         }).collect::<Vec<_>>();
     let gba_edges_str = gba_edges.join("\n");
@@ -106,12 +108,12 @@ fn main() {
     println!("\n\n\n\n\nCreating simplified GBA");
     let simplified_gba = gba.simplify();
 
-    println!("{}", simplified_gba.states.iter().map(|e| ltlset_string(e)).collect::<Vec<_>>().join(",\n"));
+    println!("{}", simplified_gba.states.iter().map(|e| e).join(",\n"));
 
     let simplified_gba_edges = simplified_gba.delta.iter()
         .flat_map(|(source, targets)| {
             targets.iter().map(move |(symcon, target)| {
-                format!("\"{}\" -> \"{}\" [label = \"{}\"]", ltlset_string(source), ltlset_string(target), symcon)
+                format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, target, symcon)
             })
         }).collect::<Vec<_>>();
     let simplified_gba_edges_str = simplified_gba_edges.join("\n");
@@ -124,7 +126,7 @@ fn main() {
     for (i, acc_tran_set) in simplified_gba.accepting_transitions.iter().enumerate() {
         println!("Set {i}");
         for GBATransition(source, action, target) in acc_tran_set {
-            println!("source: {}, action: {}, target: {}", ltlset_string(source), action, ltlset_string(target));
+            println!("source: {}, action: {}, target: {}", source, action, target);
         }
     }
 

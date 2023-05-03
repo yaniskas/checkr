@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 
 use crate::{model_checking::{ProgramGraph, vwaa::{SymbolConjunction, Symbol}}, interpreter::{Configuration, next_configurations}, ast::{BExpr, LogicOp}, sign::Memory, pg::{Node, Action}};
 
@@ -82,13 +82,13 @@ impl <'a> ProductTransitionSystem<'a> {
     pub fn state_is_final(&self, state: &ProductNode) -> bool {
         let bastate = &state.1;
         match bastate {
-            TrappingBAState::NormalState(state) => state.1 == self.buchi.num_layers,
+            TrappingBAState::NormalState(state) => state.1 == self.buchi.top_layer,
             TrappingBAState::TrapState => false
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TrappingBAState {
     NormalState(BAState),
     TrapState
@@ -98,7 +98,7 @@ pub type ProductNode = (Configuration, TrappingBAState);
 
 pub type PathFragment = Vec<ProductNode>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LTLVerificationResult {
     CycleFound(PathFragment),
     CycleNotFound,
@@ -127,8 +127,8 @@ fn symcon_to_bexp(symcon: &SymbolConjunction) -> BExpr {
 pub fn nested_dfs(program_graph: &ProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let product = ProductTransitionSystem::new(program_graph, buchi);
 
-    let mut R: HashSet<ProductNode> = HashSet::new();
-    let mut T: HashSet<ProductNode> = HashSet::new();
+    let mut R: BTreeSet<ProductNode> = BTreeSet::new();
+    let mut T: BTreeSet<ProductNode> = BTreeSet::new();
 
     let mut search_depth_exceeded = false;
     
@@ -148,7 +148,7 @@ pub fn nested_dfs(program_graph: &ProgramGraph, buchi: &BA, initial_memory: &Mod
     if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut HashSet<ProductNode>, T: &mut HashSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
+fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut BTreeSet<ProductNode>, T: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
     let mut U: VecDeque<ProductNode> = VecDeque::new();
 
     U.push_front(s.clone());
@@ -204,7 +204,7 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut H
     if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
+fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
     let mut V: VecDeque<ProductNode> = VecDeque::new();
 
     V.push_front(s.clone());
@@ -220,7 +220,7 @@ fn cycle_check(s: &ProductNode, product: &ProductTransitionSystem, T: &mut HashS
         }
 
         println!("Iterating inner DFS");
-        let post_s_prime = product.next_nodes(s_prime).into_iter().collect::<HashSet<_>>();
+        let post_s_prime = product.next_nodes(s_prime).into_iter().collect::<BTreeSet<_>>();
         if post_s_prime.contains(&s) {
             V.push_front(s.clone());
             println!("Found cycle to final state {:#?}", s);

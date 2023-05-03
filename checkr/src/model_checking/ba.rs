@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet, BTreeSet}, fmt::Display};
+use std::{collections::{BTreeSet, BTreeMap}, fmt::Display};
 
 use super::{vwaa::{SymbolConjunction, LTLConjunction}, gba::{GBA, GBATransition}, traits::{Add, AddMany}};
 
@@ -15,9 +15,9 @@ pub type BATransitionResult = (SymbolConjunction, BAState);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BA {
-    pub delta: HashMap<BAState, HashSet<BATransitionResult>>,
+    pub delta: BTreeMap<BAState, BTreeSet<BATransitionResult>>,
     pub initial_state: BAState,
-    pub num_layers: usize,
+    pub top_layer: usize,
 }
 
 impl BA {
@@ -30,21 +30,21 @@ impl BA {
         let state_to_int = states.iter()
             .enumerate()
             .map(|(num, state)| (state.clone(), num))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let accepting_transitions = accepting_transitions.clone().into_iter().collect::<Vec<_>>();
-        let num_layers = accepting_transitions.len();
+        let top_layer = accepting_transitions.len();
 
         let delta_prime = states.iter()
             .flat_map(|q| {
-                (0..=num_layers).into_iter()
+                (0..=top_layer).into_iter()
                     .map(|j| {
                         let targets = gba.get_next_edges(q).into_iter()
                             .map(|(alpha, q_prime)| {
                                 let j_prime = next(j, q, alpha, q_prime, &accepting_transitions);
                                 (alpha.clone(), BAState(state_to_int[q_prime], j_prime))
                             })
-                            .collect::<HashSet<_>>();
+                            .collect::<BTreeSet<_>>();
                         (BAState(state_to_int[q], j), targets)
                     })
             })
@@ -52,10 +52,10 @@ impl BA {
 
         let initial_state_ba = BAState(state_to_int[&initial_state], 0);
 
-        BA {delta: delta_prime, initial_state: initial_state_ba, num_layers}
+        BA {delta: delta_prime, initial_state: initial_state_ba, top_layer}
     }
 
-    pub fn get_states(&self) -> HashSet<BAState> {
+    pub fn get_states(&self) -> BTreeSet<BAState> {
         self.delta.iter()
             .flat_map(|(source, targets)| {
                 Vec::new()
@@ -65,10 +65,10 @@ impl BA {
             .collect()
     }
 
-    pub fn get_next_edges(&self, state: &BAState) -> HashSet<&BATransitionResult> {
+    pub fn get_next_edges(&self, state: &BAState) -> BTreeSet<&BATransitionResult> {
         match self.delta.get(&state) {
             Some(results) => results.iter().collect(),
-            None => HashSet::new()
+            None => BTreeSet::new()
         }
     }
 }

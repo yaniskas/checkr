@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::collections::{HashSet, HashMap, BTreeSet, VecDeque};
+use std::collections::{BTreeSet, BTreeMap, VecDeque};
 use std::rc::Rc;
 use std::iter;
 
@@ -18,45 +18,37 @@ pub struct GBATransition(pub LTLConjunction, pub SymbolConjunction, pub LTLConju
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GBA {
-    pub states: HashSet<LTLConjunction>,
-    pub delta: HashMap<LTLConjunction, HashSet<GBATransitionResult>>,
+    pub states: BTreeSet<LTLConjunction>,
+    pub delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>,
     pub initial_state: LTLConjunction,
     pub accepting_transitions: BTreeSet<BTreeSet<GBATransition>>,
-}
-
-pub fn ltlset_string(ltlset: &LTLConjunction) -> String {
-    match ltlset {
-        LTLConjunction::TT => "tt".to_string(),
-        LTLConjunction::Conjunction(ltlset) => ltlset.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(" && ")
-    }
 }
 
 impl GBA {
     pub fn from_vwaa(vwaa: VWAA) -> GBA {
         let VWAA { states, delta, initial_states, final_states } = vwaa;
         
-        println!("Subset: {}", initial_states.is_subset(&states));
+        println!("Initial states subset of states: {}", initial_states.is_subset(&states));
         let q_prime = ltl_power_set(states);
 
         println!("Original number of states: {}", q_prime.len());
+        println!("States: {:?}", q_prime);
 
         let delta2prime = q_prime.iter()
             .map(|ltlcon| {
-                let results = match ltlcon {
-                    LTLConjunction::TT => delta.get(&NegativeNormalLTL::True).map(|v| v.clone().into_iter().collect::<BTreeSet<_>>()).unwrap_or_else(|| BTreeSet::new()),
-                    LTLConjunction::Conjunction(set) => set.iter()
-                        .map(|e| delta.get(e).map(|v| v.clone()).unwrap_or_else(|| HashSet::new()))
-                        .reduce(|e1, e2| circle_x(&e1, &e2))
-                        .unwrap_or(HashSet::new().add((SymbolConjunction::TT, LTLConjunction::Conjunction(BTreeSet::new().add(NegativeNormalLTL::False)))))
-                        .into_iter()
-                        .collect::<BTreeSet<_>>()
-                };
+                let results = ltlcon.get_components().iter()
+                    .map(|e| delta.get(e).map(|v| v.clone()).unwrap_or_else(|| BTreeSet::new()))
+                    .reduce(|e1, e2| circle_x(&e1, &e2))
+                    .unwrap()
+                    .into_iter()
+                    .collect::<BTreeSet<_>>();
+
                 (ltlcon.clone(), results)
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
-        let initial_state = LTLConjunction::Conjunction(initial_states.into_iter().collect::<BTreeSet<_>>());
-        println!("Initial state: {}", ltlset_string(&initial_state));
+        let initial_state = LTLConjunction::new(initial_states.into_iter().collect::<BTreeSet<_>>());
+        println!("Initial state: {}", &initial_state);
         println!("In Q_prime: {}", q_prime.contains(&initial_state));
         
         println!("Number of transition results before removing non-reachable: {}", delta2prime.len());
@@ -70,7 +62,7 @@ impl GBA {
             .flat_map(|(source, set)| {
                 set.into_iter().map(move |(action, sink)| GBATransition(source.clone(), action, sink))
             })
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         let accepting_transitions = find_accepting_transitions(&final_states, &delta, &delta2prime);
         println!("Number of accepting transition sets: {}", accepting_transitions.len());
@@ -80,7 +72,7 @@ impl GBA {
             for at in ats {
                 print!("Transition: ");
                 let GBATransition(source, action, target) = at;
-                println!("source: {} action: {} target: {}", ltlset_string(source), action, ltlset_string(target));
+                println!("source: {} action: {} target: {}", source, action, target);
             }
         }
 
@@ -106,12 +98,12 @@ impl GBA {
         println!("Delta prime:");
         println!("{}", delta_prime.contains_key(&initial_state));
 
-        let Q_prime = delta_prime.iter()
-            .map(|(source, targets)| source.clone())
-            .collect::<HashSet<_>>();
+        // let Q_prime = delta_prime.iter()
+        //     .map(|(source, targets)| source.clone())
+        //     .collect::<HashSet<_>>();
 
         GBA {
-            states: Q_prime,
+            states: q_prime,
             delta: delta_prime,
             initial_state,
             accepting_transitions
@@ -119,24 +111,24 @@ impl GBA {
 
     }
 
-    pub fn get_next_edges(&self, state: &LTLConjunction) -> HashSet<&GBATransitionResult> {
+    pub fn get_next_edges(&self, state: &LTLConjunction) -> BTreeSet<&GBATransitionResult> {
         match self.delta.get(&state) {
             Some(results) => results.iter().collect(),
-            None => HashSet::new()
+            None => BTreeSet::new()
         }
     }
 }
 
-pub fn agglomerate_transitions(transitions: HashSet<GBATransition>) -> HashMap<LTLConjunction, HashSet<GBATransitionResult>> {
+pub fn agglomerate_transitions(transitions: BTreeSet<GBATransition>) -> BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>> {
     let delta_prime = transitions.into_iter()
-        .fold(HashMap::new(), |mut acc, GBATransition(source, action, sink)| {
-            acc.entry(source).or_insert(HashSet::new()).insert((action, sink));
+        .fold(BTreeMap::new(), |mut acc, GBATransition(source, action, sink)| {
+            acc.entry(source).or_insert(BTreeSet::new()).insert((action, sink));
             acc
         });
     delta_prime
 }
 
-pub fn states_from_transitions(transitions: &HashSet<GBATransition>) -> HashSet<LTLConjunction> {
+pub fn states_from_transitions(transitions: &BTreeSet<GBATransition>) -> BTreeSet<LTLConjunction> {
     transitions.iter()
             .flat_map(|GBATransition(source, symcon, target)| [source.clone(), target.clone()])
             .collect()
@@ -163,24 +155,23 @@ fn transition_less(first: &GBATransition, second: &GBATransition, accepting_tran
         })
 }
 
-fn ltl_power_set(set: HashSet<NegativeNormalLTL>) -> HashSet<LTLConjunction> {
-    let rc_set = set.into_iter().filter(|e| e != &NegativeNormalLTL::True && e != &NegativeNormalLTL::False)
-        .map(Rc::new).collect::<HashSet<_>>();
+fn ltl_power_set(set: BTreeSet<NegativeNormalLTL>) -> BTreeSet<LTLConjunction> {
+    let rc_set = set.into_iter().filter(|e| e != &NegativeNormalLTL::True)
+        .map(Rc::new).collect::<BTreeSet<_>>();
 
-    rc_set.into_iter().fold(HashSet::new().add(LTLConjunction::Conjunction(BTreeSet::new())), |acc, elem| {
+    rc_set.into_iter().fold(BTreeSet::singleton(LTLConjunction::tt()), |acc, elem| {
         acc.clone().add_many(
             acc
                 .into_iter()
-                .map(|e| e.conjuct(&LTLConjunction::Conjunction(BTreeSet::new().add((*elem).clone()))))
+                .map(|e| e.conjuct(&LTLConjunction::new(BTreeSet::singleton((*elem).clone()))))
         )
-    }).add(LTLConjunction::TT)
-    // TODO: Figure out how to add the true in a nicer way
+    })
 }
 
-fn remove_non_minimal<T: Eq + Hash>(set: HashSet<T>, comparator: impl Fn(&T, &T) -> Option<Ordering>) -> HashSet<T> {
-    set.into_iter().fold(HashSet::new(), |acc: HashSet<T>, new_elem| {
+fn remove_non_minimal<T: Eq + Ord>(set: BTreeSet<T>, comparator: impl Fn(&T, &T) -> Option<Ordering>) -> BTreeSet<T> {
+    set.into_iter().fold(BTreeSet::new(), |acc: BTreeSet<T>, new_elem| {
         let original_size = acc.len();
-        let new_set = acc.into_iter().filter(|elem| comparator(elem, &new_elem) != Some(Ordering::Greater)).collect::<HashSet<T>>();
+        let new_set = acc.into_iter().filter(|elem| comparator(elem, &new_elem) != Some(Ordering::Greater)).collect::<BTreeSet<T>>();
         let new_size = new_set.len();
 
         if new_size < original_size 
@@ -190,23 +181,23 @@ fn remove_non_minimal<T: Eq + Hash>(set: HashSet<T>, comparator: impl Fn(&T, &T)
     })
 }
 
-fn get_reachable(delta: HashMap<LTLConjunction, BTreeSet<GBATransitionResult>>, initial: &LTLConjunction) -> HashMap<LTLConjunction, BTreeSet<GBATransitionResult>> {
+fn get_reachable(delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>, initial: &LTLConjunction) -> BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>> {
     let vec = delta.into_iter().collect::<Vec<_>>();
     let state_to_index = vec.iter()
         .enumerate()
         .map(|(i, (state, _))| {
             (state.clone(), i)
         })
-        .collect::<HashMap<_, _>>();
+        .collect::<BTreeMap<_, _>>();
 
-    let mut visited = HashSet::new();
+    let mut visited = BTreeSet::new();
 
     let empty_set = BTreeSet::new();
 
     let mut queue = VecDeque::new();
     queue.push_back(initial);
     while let Some(current_state) = queue.pop_front() {
-        println!("Current state: {}", ltlset_string(current_state));
+        println!("Current state: {}", current_state);
 
         if (visited.contains(current_state)) {
             println!("State already visited");
@@ -231,7 +222,7 @@ fn get_reachable(delta: HashMap<LTLConjunction, BTreeSet<GBATransitionResult>>, 
 
     vec.into_iter()
         .filter(|(value, targets)| visited.contains(value))
-        .collect::<HashMap<_, _>>()
+        .collect::<BTreeMap<_, _>>()
 
 }
 
@@ -255,16 +246,8 @@ impl Subsettable for SymbolConjunction {
 
 impl Subsettable for LTLConjunction {
     fn is_subset(&self, other: &Self) -> bool {
-        match other {
-            LTLConjunction::TT => *self == LTLConjunction::TT,
-            LTLConjunction::Conjunction(otherset) => {
-                match self {
-                    LTLConjunction::TT => true,
-                    // Uses the opposite logic here as compared to SymbolConjunction due to the different interpretation given to it
-                    LTLConjunction::Conjunction(selfset) => selfset.is_subset(otherset)
-                }
-            }
-        }
+        // Uses the opposite logic here as compared to SymbolConjunction due to the different interpretation given to it
+        self.get_components().is_subset(&other.get_components())
     }
 }
 
@@ -277,17 +260,14 @@ impl Contains for LTLConjunction {
     type Item = NegativeNormalLTL;
 
     fn contains(&self, item: &Self::Item) -> bool {
-        match self {
-            LTLConjunction::TT => false,
-            LTLConjunction::Conjunction(set) => set.contains(item)
-        }
+        self.get_components().contains(item)
     }
 }
 
 fn find_accepting_transitions(
-    final_states: &HashSet<NegativeNormalLTL>, 
-    delta: &HashMap<NegativeNormalLTL, HashSet<VWAATransitionResult>>,
-    delta2prime: &HashMap<LTLConjunction, BTreeSet<GBATransitionResult>>
+    final_states: &BTreeSet<NegativeNormalLTL>, 
+    delta: &BTreeMap<NegativeNormalLTL, BTreeSet<VWAATransitionResult>>,
+    delta2prime: &BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>
 ) -> BTreeSet<BTreeSet<GBATransition>> {
     final_states.iter()
         .map(|fstate| {

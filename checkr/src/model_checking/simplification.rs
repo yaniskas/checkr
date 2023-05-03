@@ -1,5 +1,4 @@
-use std::collections::{HashSet, VecDeque, HashMap};
-use std::hash::Hash;
+use std::collections::{BTreeSet, BTreeMap, VecDeque};
 use std::fmt::Debug;
 
 use crate::model_checking::traits::AddMany;
@@ -11,8 +10,8 @@ use super::vwaa::{LTLConjunction, SymbolConjunction};
 
 // Based on Fast pg. 63 / Section 6
 pub trait SimplifiableAutomaton: Clone + Eq {
-    type State: Hash + Eq + Clone + Debug;
-    type Transition: Hash + Eq;
+    type State: Ord + Eq + Clone + Debug;
+    type Transition: Ord + Eq;
 
     fn simplify(self) -> Self {
         let mut automaton = self;
@@ -25,9 +24,9 @@ pub trait SimplifiableAutomaton: Clone + Eq {
         }
     }
 
-    fn get_initial_states(&self) -> HashSet<Self::State>;
-    fn get_next_states(&self, state: &Self::State) -> HashSet<Self::State>;
-    fn with_only_states(self, states: HashSet<Self::State>) -> Self;
+    fn get_initial_states(&self) -> BTreeSet<Self::State>;
+    fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State>;
+    fn with_only_states(self, states: BTreeSet<Self::State>) -> Self;
 
     fn remove_inaccessible_states(self) -> Self {
         let initial_states = self.get_initial_states();
@@ -35,7 +34,7 @@ pub trait SimplifiableAutomaton: Clone + Eq {
         let mut queue = VecDeque::new();
         queue.extend(initial_states);
 
-        let mut visited = HashSet::new();
+        let mut visited = BTreeSet::new();
 
         while let Some(current_state) = queue.pop_front() {
             if visited.contains(&current_state) {
@@ -50,14 +49,14 @@ pub trait SimplifiableAutomaton: Clone + Eq {
         self.with_only_states(visited)
     }
 
-    fn get_transitions(&self) -> HashSet<Self::Transition>;
+    fn get_transitions(&self) -> BTreeSet<Self::Transition>;
     fn transition_implies(&self, first: &Self::Transition, second: &Self::Transition) -> bool;
-    fn with_only_transitions(self, transitions: HashSet<Self::Transition>) -> Self;
+    fn with_only_transitions(self, transitions: BTreeSet<Self::Transition>) -> Self;
 
     fn remove_implied_transitions(self) -> Self {
         let transitions = self.get_transitions();
 
-        let mut transitions_new = HashSet::new();
+        let mut transitions_new = BTreeSet::new();
 
         for t in transitions {
             if transitions_new.iter()
@@ -72,7 +71,7 @@ pub trait SimplifiableAutomaton: Clone + Eq {
         self.with_only_transitions(transitions_new)
     }
 
-    fn get_states(&self) -> HashSet<Self::State>;
+    fn get_states(&self) -> BTreeSet<Self::State>;
     fn states_equivalent(&self, state1: &Self::State, state2: &Self::State) -> bool;
     fn with_states_merged(self, to_merge: Vec<(Self::State, Self::State)>) -> Self;
 
@@ -115,11 +114,11 @@ impl SimplifiableAutomaton for GBA {
 
     type Transition = GBATransition;
 
-    fn get_initial_states(&self) -> HashSet<Self::State> {
-        HashSet::new().add(self.initial_state.clone())
+    fn get_initial_states(&self) -> BTreeSet<Self::State> {
+        BTreeSet::new().add(self.initial_state.clone())
     }
 
-    fn get_next_states(&self, state: &Self::State) -> HashSet<Self::State> {
+    fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
         println!("Results:");
         match self.delta.get(&state) {
             Some(results) => results.iter().map(|(symcon, target)| {
@@ -127,11 +126,12 @@ impl SimplifiableAutomaton for GBA {
                 println!("{:?}", target);
                 target.clone()
         }).collect(),
-            None => HashSet::new()
+            None => BTreeSet::new()
         }
     }
 
-    fn with_only_states(self, states: HashSet<Self::State>) -> Self {
+    fn with_only_states(self, states: BTreeSet<Self::State>) -> Self {
+        println!("Creating GBA with only states {:?}", states);
         let GBA {states: _, delta, initial_state, accepting_transitions} = self;
 
         let delta = delta.into_iter()
@@ -147,7 +147,7 @@ impl SimplifiableAutomaton for GBA {
         GBA {states, delta, initial_state, accepting_transitions}
     }
 
-    fn get_transitions(&self) -> HashSet<Self::Transition> {
+    fn get_transitions(&self) -> BTreeSet<Self::Transition> {
         self.delta.iter()
             .flat_map(|(source, targets)| {
                 targets.iter().map(|(symcon, target)| GBATransition(source.clone(), symcon.clone(), target.clone()))
@@ -164,16 +164,16 @@ impl SimplifiableAutomaton for GBA {
         })
     }
 
-    fn with_only_transitions(self, transitions: HashSet<Self::Transition>) -> Self {
-        let GBA {states: _, delta: _, initial_state, accepting_transitions} = self;
+    fn with_only_transitions(self, transitions: BTreeSet<Self::Transition>) -> Self {
+        let GBA {states, delta: _, initial_state, accepting_transitions} = self;
 
-        let states = states_from_transitions(&transitions);
+        // let states = states_from_transitions(&transitions);
         let delta = agglomerate_transitions(transitions);
         
         GBA {states, delta, initial_state, accepting_transitions}
     }
 
-    fn get_states(&self) -> HashSet<Self::State> {
+    fn get_states(&self) -> BTreeSet<Self::State> {
         self.states.clone()
     }
 
@@ -193,13 +193,14 @@ impl SimplifiableAutomaton for GBA {
 
         let GBA {states, delta, initial_state, accepting_transitions} = self;
 
+        println!("States pre-merge: {:?}", states);
         println!("delta length: {}", delta.len());
 
         let to_remove = to_merge.iter().map(|(_q1, q2)| q2);
-        let to_remove_set = to_remove.clone().map(|e| e.clone()).collect::<HashSet<_>>();
+        let to_remove_set = to_remove.clone().map(|e| e.clone()).collect::<BTreeSet<_>>();
         let removed_to_new_mapping = to_merge.iter()
             .map(|(fst, snd)| (snd.clone(), fst.clone()))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let initial_state = if removed_to_new_mapping.contains_key(&initial_state) {
             println!("Replacing initial state");
@@ -232,17 +233,18 @@ impl SimplifiableAutomaton for GBA {
             .collect();
 
         println!("New delta length: {}", delta.len());
+        println!("States post-merge: {:?}", states);
 
         GBA {states, delta, initial_state, accepting_transitions}
         
     }
 }
 
-fn merge_states_in_transitions<'a, T: Hash + Eq + Clone + 'a + Debug, U: Eq + Hash>(
-    transitions: HashMap<T, HashSet<(U, T)>>,
+fn merge_states_in_transitions<'a, T: Ord + Eq + Clone + 'a + Debug, U: Eq + Ord>(
+    transitions: BTreeMap<T, BTreeSet<(U, T)>>,
     to_remove: impl Iterator<Item = &'a T>,
-    removed_to_new_mapping: &HashMap<T, T>
-) -> HashMap<T, HashSet<(U, T)>> {
+    removed_to_new_mapping: &BTreeMap<T, T>
+) -> BTreeMap<T, BTreeSet<(U, T)>> {
     println!("transitions length: {}", transitions.len());
     to_remove.fold(transitions, |cdelta, cremove| {
         println!("removing {:?}", cremove);
@@ -260,7 +262,7 @@ fn merge_states_in_transitions<'a, T: Hash + Eq + Clone + 'a + Debug, U: Eq + Ha
                 .collect();
             (source, targets)
         })
-        .collect::<HashMap<_, _>>()
+        .collect::<BTreeMap<_, _>>()
 }
 
 impl SimplifiableAutomaton for BA {
@@ -268,11 +270,11 @@ impl SimplifiableAutomaton for BA {
 
     type Transition = (BAState, SymbolConjunction, BAState);
 
-    fn get_initial_states(&self) -> HashSet<Self::State> {
-        HashSet::new().add(self.initial_state.clone())
+    fn get_initial_states(&self) -> BTreeSet<Self::State> {
+        BTreeSet::new().add(self.initial_state.clone())
     }
 
-    fn get_next_states(&self, state: &Self::State) -> HashSet<Self::State> {
+    fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
         println!("Results:");
         match self.delta.get(&state) {
             Some(results) => results.iter().map(|(symcon, targets)| {
@@ -280,12 +282,12 @@ impl SimplifiableAutomaton for BA {
                 println!("{:?}", targets);
                 targets.clone()
             }).collect(),
-            None => HashSet::new()
+            None => BTreeSet::new()
         }
     }
 
-    fn with_only_states(self, states: HashSet<Self::State>) -> Self {
-        let BA {delta, initial_state, num_layers} = self;
+    fn with_only_states(self, states: BTreeSet<Self::State>) -> Self {
+        let BA {delta, initial_state, top_layer} = self;
 
         let delta = delta.into_iter()
             .filter(|(source, _targets)| states.contains(source))
@@ -297,10 +299,10 @@ impl SimplifiableAutomaton for BA {
             })
             .collect();
             
-        BA {delta, initial_state, num_layers}
+        BA {delta, initial_state, top_layer}
     }
 
-    fn get_transitions(&self) -> HashSet<Self::Transition> {
+    fn get_transitions(&self) -> BTreeSet<Self::Transition> {
         self.delta.iter()
             .flat_map(|(source, targets)| {
                 targets.iter().map(|(symcon, target)| (source.clone(), symcon.clone(), target.clone()))
@@ -315,39 +317,39 @@ impl SimplifiableAutomaton for BA {
         qs1 == qs2 && alpha2.is_subset(&alpha1) && q1 == q2
     }
 
-    fn with_only_transitions(self, transitions: HashSet<Self::Transition>) -> Self {
-        let BA {delta: _, initial_state, num_layers} = self;
+    fn with_only_transitions(self, transitions: BTreeSet<Self::Transition>) -> Self {
+        let BA {delta: _, initial_state, top_layer} = self;
 
         let delta_prime = transitions.into_iter()
-            .fold(HashMap::new(), |mut acc, (source, action, sink)| {
-                acc.entry(source).or_insert(HashSet::new()).insert((action, sink));
+            .fold(BTreeMap::new(), |mut acc, (source, action, sink)| {
+                acc.entry(source).or_insert(BTreeSet::new()).insert((action, sink));
                 acc
             });
         
-        BA {delta: delta_prime, initial_state, num_layers}
+        BA {delta: delta_prime, initial_state, top_layer}
     }
 
-    fn get_states(&self) -> HashSet<Self::State> {
+    fn get_states(&self) -> BTreeSet<Self::State> {
         self.get_states()
     }
 
     fn states_equivalent(&self, q1: &Self::State, q2: &Self::State) -> bool {
         self.get_next_edges(q1) == self.get_next_edges(q2)
-        && (q1.1 == self.num_layers) == (q2.1 == self.num_layers)
+        && (q1.1 == self.top_layer) == (q2.1 == self.top_layer)
     }
 
     fn with_states_merged(self, to_merge: Vec<(Self::State, Self::State)>) -> Self {
         println!("to_merge length: {}", to_merge.len());
         println!("{:?}", to_merge);
 
-        let BA {delta, initial_state, num_layers: _} = self;
+        let BA {delta, initial_state, top_layer: _} = self;
 
         println!("delta length: {}", delta.len());
 
         let to_remove = to_merge.iter().map(|(_q1, q2)| q2);
         let removed_to_new_mapping = to_merge.iter()
             .map(|(fst, snd)| (snd.clone(), fst.clone()))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let initial_state = if removed_to_new_mapping.contains_key(&initial_state) {
             println!("Replacing initial state");
@@ -358,18 +360,18 @@ impl SimplifiableAutomaton for BA {
         };
 
         let delta = merge_states_in_transitions(delta, to_remove.clone(), &removed_to_new_mapping);
-        let num_layers = delta.iter()
+        let top_layer = delta.iter()
             .flat_map(|(source, targets)| {
                 Vec::new()
                     .add(source.1)
                     .add_many(targets.iter().map(|(_symcon, BAState(_state, layer))| layer.clone()))
             })
             .max()
-            .unwrap();
+            .unwrap_or(0);
 
         println!("New delta length: {}", delta.len());
 
-        BA {delta, initial_state, num_layers}
+        BA {delta, initial_state, top_layer}
         
     }
 }

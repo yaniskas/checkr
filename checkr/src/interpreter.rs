@@ -24,7 +24,7 @@ pub enum TerminationState {
     Terminated,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Configuration<N = Node> {
     pub node: N,
     pub memory: InterpreterMemory,

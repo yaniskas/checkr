@@ -124,3 +124,19 @@ impl <T: Hash + Eq, U> WithRemoved for HashMap<T, U> {
         self
     }
 }
+
+impl <T: Ord + Eq> WithRemoved for BTreeSet<T> {
+    type Item = T;
+    fn with_removed(mut self, item: &Self::Item) -> Self {
+        self.remove(item);
+        self
+    }
+}
+
+impl <T: Ord + Eq, U> WithRemoved for BTreeMap<T, U> {
+    type Item = T;
+    fn with_removed(mut self, item: &Self::Item) -> Self {
+        self.remove(item);
+        self
+    }
+}
