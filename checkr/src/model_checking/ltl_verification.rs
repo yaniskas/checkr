@@ -1,6 +1,8 @@
-use crate::pg::ProgramGraph;
+use std::collections::BTreeMap;
 
-use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton};
+use crate::{pg::ProgramGraph, ast::Target};
+
+use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton, traits::Add};
 
 pub fn verify_ltl(program_graph: &ProgramGraph, ltl: LTL, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let formula = LTL::Not(Box::new(ltl));
@@ -16,6 +18,32 @@ pub fn verify_ltl(program_graph: &ProgramGraph, ltl: LTL, initial_memory: &Model
     nested_dfs(program_graph, &simplified_ba, initial_memory, search_depth)
 }
 
+pub fn zero_initialized_memory(pg: &ProgramGraph, array_length: usize) -> ModelCheckMemory {
+    let targets = pg.fv();
+
+    let empty_memory = ModelCheckMemory {
+        variables: BTreeMap::new(),
+        arrays: BTreeMap::new(),
+    };
+
+    targets.into_iter().fold(empty_memory, |acc, e| {
+        match e {
+            Target::Variable(v) => ModelCheckMemory {
+                variables: acc.variables.add((v, 0)),
+                ..acc
+            },
+            Target::Array(a, _) => {
+                let mut vec = Vec::new();
+                for _ in 0..array_length {vec.push(0)}
+                ModelCheckMemory {
+                    arrays: acc.arrays.add((a, vec)),
+                    ..acc
+                }
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::{HashMap, BTreeMap};
@@ -23,32 +51,6 @@ mod test {
     use crate::{parse::parse_commands, pg::Determinism, ast::Target, model_checking::{traits::Add, ltl_ast::parse_ltl}};
 
     use super::*;
-
-    fn zero_initialized_memory(pg: &ProgramGraph, array_length: usize) -> ModelCheckMemory {
-        let targets = pg.fv();
-
-        let empty_memory = ModelCheckMemory {
-            variables: BTreeMap::new(),
-            arrays: BTreeMap::new(),
-        };
-
-        targets.into_iter().fold(empty_memory, |acc, e| {
-            match e {
-                Target::Variable(v) => ModelCheckMemory {
-                    variables: acc.variables.add((v, 0)),
-                    ..acc
-                },
-                Target::Array(a, _) => {
-                    let mut vec = Vec::new();
-                    for _ in 0..array_length {vec.push(0)}
-                    ModelCheckMemory {
-                        arrays: acc.arrays.add((a, vec)),
-                        ..acc
-                    }
-                }
-            }
-        })
-    }
 
     fn verify(program: &str, ltl: &str) -> LTLVerificationResult {
         let pg = ProgramGraph::new(Determinism::NonDeterministic, &parse_commands(program).unwrap());
@@ -86,14 +88,6 @@ mod test {
         ";
         verify_satisfies(program, "<>{n >= 1}");
     }
-
-    // #[test]
-    // fn set_1() {
-    //     let program = "
-    //     n := 1;
-    //     ";
-    //     verify_satisfies(program, "{n = 1}");
-    // }
 
     #[test]
     fn set_below_0() {
@@ -194,5 +188,29 @@ mod test {
         od
         ";
         verify_not_satisfies(program, "[]({i = 10} -> <>{i = 20})");
+    }
+
+    #[test]
+    fn set_1() {
+        let program = "
+        n := 1
+        ";
+        verify_satisfies(program, "{n = 0}");
+    }
+
+    #[test]
+    fn set_1_false() {
+        let program = "
+        n := 1
+        ";
+        verify_not_satisfies(program, "{n = 1}");
+    }
+
+    #[test]
+    fn set_1_next() {
+        let program = "
+        n := 1
+        ";
+        verify_satisfies(program, "(){n = 1}");
     }
 }

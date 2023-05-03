@@ -1,13 +1,15 @@
-#![feature(box_syntax)]
-
 use std::fs;
 
 use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::{VWAA, LTLConjunction}, gba::{GBA, ltlset_string, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, ast::{BExpr, AExpr, RelOp}};
 
 fn main() {
     let str = "
-    <>{i = 1}
+    ({1 > 0} U {2 > 1}) U ({3 > 2} U {4 > 3})
     ";
+
+    // let str = "
+    // []<>{5 >= 4} -> []({10 >= 9} -> <>{11 >= 10})
+    // ";
 
     let formula = dbg!(LTL::Not(Box::new(parse_ltl(str).unwrap())));
 
@@ -36,6 +38,7 @@ fn main() {
         "digraph vwaa {\n".to_string()
         + &vwaa_edges_str
         + "}";
+    fs::create_dir_all("graphviz_output");
     fs::write("graphviz_output/vwaa5.dot", graphviz_output).unwrap();
 
 
@@ -134,11 +137,14 @@ fn main() {
     println!("Simplified BA edges:");
     println!("{}", simplified_ba_edges_str);
 
+    let initial_state_str = format!("node [shape = doublecircle]; \"{}\"\nnode [shape = circle]\n", simplified_ba.initial_state);
+
     let simplified_ba_output =
         "digraph ba_simplified {\n".to_string()
+        + &initial_state_str
         + &simplified_ba_edges_str
         + "}";
-    fs::write("graphviz_output/ba_simplified2.dot", simplified_ba_output).unwrap();
+    fs::write("graphviz_output/ba_simplified.dot", simplified_ba_output).unwrap();
 
 
 

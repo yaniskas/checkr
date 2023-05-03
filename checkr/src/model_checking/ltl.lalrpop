@@ -34,7 +34,7 @@ AndLTL: LTL = {
 }
 
 UntilLTL: LTL = {
-    <l: UnaryLTL> ":" <r: UntilLTL> => LTL::Until(Box::new(l), Box::new(r)),
+    <l: UnaryLTL> "U" <r: UntilLTL> => LTL::Until(Box::new(l), Box::new(r)),
     UnaryLTL,
 }
 

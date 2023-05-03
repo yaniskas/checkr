@@ -18,6 +18,7 @@ impl <'a> ProductTransitionSystem<'a> {
         let (config, tbastate) = node;
 
         if let TrappingBAState::NormalState(bastate) = tbastate {
+            println!("In normal state");
             let potential_next_configs = next_configurations(self.program_graph, &config);
 
             //
@@ -28,7 +29,7 @@ impl <'a> ProductTransitionSystem<'a> {
             };
             //
 
-            let potential_next_ba_states = self.buchi.get_next_edges(bastate);
+            let potential_next_ba_states = dbg!(self.buchi.get_next_edges(dbg!(bastate)));
 
             let next_nodes = potential_next_configs.into_iter()
                 .flat_map(move |(_action, config)| {
@@ -40,7 +41,11 @@ impl <'a> ProductTransitionSystem<'a> {
                                 println!("Leading to (config, bastate) = ({:?}, {:?})", config, bastate);
                                 Some((config.clone(), bastate.clone()))
                             }
-                            else {None}
+                            else {
+                                println!("BExp {} is NOT true in memory {:?}", condition, config.memory);
+                                println!("Leading to (config, bastate) = ({:?}, {:?})", config, bastate);
+                                None
+                            }
                         })
                         .collect::<Vec<_>>()
                 })
@@ -48,14 +53,17 @@ impl <'a> ProductTransitionSystem<'a> {
                 .collect::<Vec<_>>();
             
             if next_nodes.len() != 0 {
+                println!("Returning normal states");
                 next_nodes
             } else {
                 // If there are no valid edges, keep the same transition system node and make the BA move to a trap state
                 // Principles pg. 187
+                println!("Returning trap state");
                 vec![(config.clone(), TrappingBAState::TrapState)]
             }
         } else {
             // If the BA is in the trap state, do not change state
+            println!("In trap state, returning trap state");
             vec![node.clone()]
         }
     }
@@ -186,6 +194,8 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut H
                             continue;
                         }
                     }
+                } else {
+                    println!("State {:?} is NOT final", s_prime);
                 }
             }
         }

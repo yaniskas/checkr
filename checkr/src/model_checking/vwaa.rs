@@ -16,11 +16,25 @@ pub struct VWAA {
 impl VWAA {
     // Fast pg. 58 Step 1
     pub fn from_ltl(formula: &NegativeNormalLTL) -> VWAA {
-        let states = temporal_subformulae(formula);
+        let mut states = temporal_subformulae(formula);
         let mut delta = HashMap::new();
         for state in &states {
             delta.insert(state.clone(), find_delta(state));
         }
+
+        let mut new_additions = Vec::new();
+        for (_, targets) in &delta {
+            for (_, target) in targets {
+                for tstate in target.get_components() {
+                    if !states.contains(&tstate) {
+                        println!("New state found: {}", tstate);
+                        new_additions.push((tstate.clone(), find_delta(&tstate)));
+                    }
+                }
+            }
+        }
+        delta.extend(new_additions);
+
         let initial_states = bar(formula);
         let final_states = until_subformulae(formula);
 
@@ -76,6 +90,15 @@ pub enum LTLConjunction {
     Conjunction(BTreeSet<NegativeNormalLTL>),
 }
 
+impl LTLConjunction {
+    pub fn get_components(&self) -> impl IntoIterator<Item = NegativeNormalLTL> {
+        match self {
+            LTLConjunction::TT => vec![NegativeNormalLTL::True],
+            LTLConjunction::Conjunction(set) => set.iter().map(|e| e.clone()).collect()
+        }
+    }
+}
+
 impl Conjuct for LTLConjunction {
     fn conjuct(&self, other: &LTLConjunction) -> LTLConjunction {
         match self {
@@ -122,9 +145,6 @@ pub fn circle_x(j1: &HashSet<VWAATransitionResult>, j2: &HashSet<VWAATransitionR
 fn bar(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
     let mut res = HashSet::new();
     match formula {
-        NegativeNormalLTL::Next(_) | NegativeNormalLTL::Until(_, _) | NegativeNormalLTL::Release(_, _) => {
-            res.insert(formula.clone());
-        }
         NegativeNormalLTL::And(f1, f2) => {
             let barf2 = bar(f2);
             for e1 in bar(f1) {
@@ -140,7 +160,9 @@ fn bar(formula: &NegativeNormalLTL) -> HashSet<NegativeNormalLTL> {
             res.extend(bar(f1));
             res.extend(bar(f2));
         }
-        _ => {}
+        _ => {
+            res.insert(formula.clone());
+        }
     }
     res
 }
