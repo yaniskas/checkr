@@ -140,3 +140,29 @@ impl <T: Ord + Eq, U> WithRemoved for BTreeMap<T, U> {
         self
     }
 }
+
+pub trait Repeat {
+    type Item: Clone;
+
+    fn repeat(item: &Self::Item, times: usize) -> Self;
+}
+
+impl <T: Clone> Repeat for Vec<T> {
+    type Item = T;
+
+    fn repeat(item: &Self::Item, times: usize) -> Self {
+        let mut vec = Vec::new();
+        for _ in 0..times {
+            vec.push(item.clone());
+        }
+        vec
+    }
+}
+
+impl <T> Singleton for Vec<T> {
+    type Item = T;
+
+    fn singleton(item: Self::Item) -> Self {
+        vec! [item]
+    }
+}

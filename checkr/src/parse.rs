@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 use crate::{
-    ast::{BExpr, Commands, Predicate},
+    ast::{BExpr, Commands, Predicate, ParallelCommands},
     gcl,
 };
 
@@ -63,6 +63,12 @@ impl From<(usize, usize)> for SourceSpan {
     fn from((offset, length): (usize, usize)) -> Self {
         SourceSpan { offset, length }
     }
+}
+
+pub fn parse_parallel_commands(src: &str) -> Result<ParallelCommands, ParseError> {
+    static PARSER: Lazy<gcl::ParallelCommandsParser> = Lazy::new(gcl::ParallelCommandsParser::new);
+
+    PARSER.parse(src).map_err(|e| ParseError::new(src, e))
 }
 
 pub fn parse_commands(src: &str) -> Result<Commands, ParseError> {

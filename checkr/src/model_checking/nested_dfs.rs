@@ -1,16 +1,18 @@
 use std::collections::{BTreeSet, VecDeque};
 
-use crate::{model_checking::{ProgramGraph, vwaa::{SymbolConjunction, Symbol}}, interpreter::{Configuration, next_configurations}, ast::{BExpr, LogicOp}, sign::Memory, pg::{Node, Action}};
+use crate::{model_checking::{ProgramGraph, vwaa::{SymbolConjunction, Symbol}, traits::Repeat}, interpreter::{Configuration}, ast::{BExpr, LogicOp}, sign::Memory, pg::{Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}};
 
 use super::{ba::{BA, BAState}, ModelCheckMemory, traits::AddMany};
 
 pub struct ProductTransitionSystem<'a> {
-    program_graph: &'a ProgramGraph,
+    program_graph: &'a ParallelProgramGraph,
     buchi: &'a BA,
 }
 
+pub type ProductNode = (ParallelConfiguration, TrappingBAState);
+
 impl <'a> ProductTransitionSystem<'a> {
-    pub fn new(program_graph: &'a ProgramGraph, buchi: &'a BA) -> Self {
+    pub fn new(program_graph: &'a ParallelProgramGraph, buchi: &'a BA) -> Self {
         Self { program_graph, buchi }
     }
 
@@ -70,12 +72,12 @@ impl <'a> ProductTransitionSystem<'a> {
 
     pub fn initial_nodes(&self, initial_memory: &'a ModelCheckMemory) -> impl Iterator<Item = ProductNode> + 'a {
         self.buchi.get_next_edges(&self.buchi.initial_state).into_iter()
-        .filter(|(action, _bastate)| {
+            .filter(|(action, _bastate)| {
                 let condition = symcon_to_bexp(action);
                 condition.semantics(initial_memory) == Ok(true)
             })
             .map(|(_action, bastate)| {
-                (Configuration {node: Node::Start, memory: initial_memory.clone()}, TrappingBAState::NormalState(bastate.clone()))
+                (ParallelConfiguration {nodes: Vec::<Node>::repeat(&Node::Start, self.program_graph.0.len()), memory: initial_memory.clone()}, TrappingBAState::NormalState(bastate.clone()))
             })
     }
 
@@ -93,8 +95,6 @@ pub enum TrappingBAState {
     NormalState(BAState),
     TrapState
 }
-
-pub type ProductNode = (Configuration, TrappingBAState);
 
 pub type PathFragment = Vec<ProductNode>;
 
@@ -124,7 +124,7 @@ fn symcon_to_bexp(symcon: &SymbolConjunction) -> BExpr {
     }
 }
 
-pub fn nested_dfs(program_graph: &ProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
+pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let product = ProductTransitionSystem::new(program_graph, buchi);
 
     let mut R: BTreeSet<ProductNode> = BTreeSet::new();

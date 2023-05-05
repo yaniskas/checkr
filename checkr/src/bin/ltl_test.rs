@@ -1,6 +1,6 @@
 use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}, concurrency::ParallelProgramGraph};
 use itertools::Itertools;
 
 fn main() {
@@ -29,8 +29,8 @@ fn main() {
     // n := 3;
     // ";
 
-    let commands = parse::parse_commands(program).unwrap();
-    let graph = ProgramGraph::new(Determinism::NonDeterministic, &commands);
+    let commands = parse::parse_parallel_commands(program).unwrap();
+    let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &commands);
 
     let memory = ModelCheckMemory {
         variables: vec![(Variable("i".to_string()), 0), (Variable("n".to_string()), 0)].into_iter().collect(),

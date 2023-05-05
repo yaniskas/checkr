@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::{pg::ProgramGraph, ast::Target};
+use crate::{pg::ProgramGraph, ast::Target, concurrency::ParallelProgramGraph};
 
 use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton, traits::Add};
 
-pub fn verify_ltl(program_graph: &ProgramGraph, ltl: LTL, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
+pub fn verify_ltl(program_graph: &ParallelProgramGraph, ltl: LTL, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let formula = LTL::Not(Box::new(ltl));
     let reduced = formula.reduced();
     let nn = reduced.to_negative_normal();
@@ -18,8 +18,8 @@ pub fn verify_ltl(program_graph: &ProgramGraph, ltl: LTL, initial_memory: &Model
     nested_dfs(program_graph, &simplified_ba, initial_memory, search_depth)
 }
 
-pub fn zero_initialized_memory(pg: &ProgramGraph, array_length: usize) -> ModelCheckMemory {
-    let targets = pg.fv();
+pub fn zero_initialized_memory(pg: &ParallelProgramGraph, array_length: usize) -> ModelCheckMemory {
+    let targets = pg.0.iter().flat_map(ProgramGraph::fv).collect::<Vec<_>>();
 
     let empty_memory = ModelCheckMemory {
         variables: BTreeMap::new(),
@@ -45,15 +45,15 @@ pub fn zero_initialized_memory(pg: &ProgramGraph, array_length: usize) -> ModelC
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use std::collections::{HashMap, BTreeMap};
 
-    use crate::{parse::parse_commands, pg::Determinism, ast::Target, model_checking::{traits::Add, ltl_ast::parse_ltl}};
+    use crate::{parse::{parse_commands, parse_parallel_commands}, pg::Determinism, ast::Target, model_checking::{traits::Add, ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
 
     use super::*;
 
     fn verify(program: &str, ltl: &str) -> LTLVerificationResult {
-        let pg = ProgramGraph::new(Determinism::NonDeterministic, &parse_commands(program).unwrap());
+        let pg = ParallelProgramGraph::new(Determinism::NonDeterministic, &parse_parallel_commands(program).unwrap());
         verify_ltl(
             &pg,
             parse_ltl(ltl).unwrap(),
@@ -62,11 +62,11 @@ mod test {
         )
     }
 
-    fn verify_satisfies(program: &str, ltl: &str) {
+    pub fn verify_satisfies(program: &str, ltl: &str) {
         assert_eq!(verify(program, ltl), LTLVerificationResult::CycleNotFound)
     }
 
-    fn verify_not_satisfies(program: &str, ltl: &str) {
+    pub fn verify_not_satisfies(program: &str, ltl: &str) {
         match verify(program, ltl) {
             LTLVerificationResult::CycleFound(_) => {},
             _ => panic!(),
@@ -267,5 +267,52 @@ mod test {
         n := 6
         ";
         verify_not_satisfies(program, "({n < 3} U {n = 3}) U ({n < 6} U {n = 6})");
+    }
+
+    #[test]
+    fn next() {
+        let program = "
+        do true ->
+            i := 1;
+            i := 2
+        od
+        ";
+        verify_satisfies(program, "[]({i = 1} -> (){i = 2})");
+    }
+
+    #[test]
+    fn next_2() {
+        let program = "
+        do true ->
+            i := 1;
+            i := 2;
+            i := 3
+        od
+        ";
+        verify_satisfies(program, "[]({i = 1} -> ()(){i = 3})");
+    }
+
+    #[test]
+    fn next_3() {
+        let program = "
+        do true ->
+            i := 1;
+            i := 2;
+            i := 3
+        od
+        ";
+        verify_not_satisfies(program, "[]({i = 1} -> ()(){i = 2})");
+    }
+
+    #[test]
+    fn next_4() {
+        let program = "
+        do true ->
+            if i = 0 -> i := 1
+            [] i = 1 -> i := 0
+            fi
+        od
+        ";
+        verify_satisfies(program, "[]({i = 0} -> ()()(){i = 1})");
     }
 }

@@ -1,14 +1,14 @@
 use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands}, model_checking::{ModelCheckMemory, check_model, ltl_ast::parse_ltl, ltl_verification::{verify_ltl, zero_initialized_memory}, nested_dfs::LTLVerificationResult}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands}, model_checking::{ModelCheckMemory, check_model, ltl_ast::parse_ltl, ltl_verification::{verify_ltl, zero_initialized_memory}, nested_dfs::LTLVerificationResult}, concurrency::ParallelProgramGraph};
 
 fn main() {
     let commands = ask_for_with_parser(
         "Please enter a GCL program: ", 
         "Please enter a valid program", 
-        parse::parse_commands
+        parse::parse_parallel_commands
     );
-    let graph = ProgramGraph::new(Determinism::NonDeterministic, &commands);
+    let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &commands);
 
     let array_length = ask_for::<usize>(
         "Please enter the desired length of arrays: ",

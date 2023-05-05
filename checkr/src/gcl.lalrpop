@@ -28,6 +28,11 @@ SepNonEmpty<T, S>: Vec<T> = {
     }
 };
 
+pub ParallelCommands: ParallelCommands = {
+    <Commands> => ParallelCommands(vec! [<>]),
+    "par" <Sep<Commands, "[]">> "rap" => ParallelCommands(<>),
+}
+
 pub Commands: Commands = SepNonEmpty<Command, ";"> => Commands(<>);
 
 Command: Command = {
