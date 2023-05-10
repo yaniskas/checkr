@@ -154,21 +154,23 @@ pub mod test {
 
     #[test]
     fn loop_switch() {
-        let program = "
-        i := 10;
-        do true ->
-            do i < 20 ->
-                i := i + 1
-            od;
-            i := 10
-        [] true ->
-            do i > 0 ->
-                i := i - 1
-            od;
-            i := 10
-        od
-        ";
-        verify_satisfies(program, "[]({i = 11} -> <> {i = 20})");
+        loop {
+            let program = "
+            i := 10;
+            do true ->
+                do i < 20 ->
+                    i := i + 1
+                od;
+                i := 10
+            [] true ->
+                do i > 0 ->
+                    i := i - 1
+                od;
+                i := 10
+            od
+            ";
+            verify_satisfies(program, "[]({i = 11} -> <> {i = 20})");
+        }
     }
 
     #[test]

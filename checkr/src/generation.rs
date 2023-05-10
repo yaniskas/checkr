@@ -1,7 +1,7 @@
 use rand::{seq::SliceRandom, Rng};
 
 use crate::ast::{
-    AExpr, AOp, Array, BExpr, Command, Commands, Guard, LogicOp, RelOp, Target, Variable,
+    AExpr, AOp, Array, BExpr, Command, Commands, Guard, LogicOp, RelOp, Target, Variable, Assignment
 };
 
 pub struct Context {
@@ -173,7 +173,7 @@ impl Generate for Command {
                 (
                     1.0,
                     Box::new(|cx, rng| {
-                        Command::Assignment(Target::gen(cx, rng), AExpr::gen(cx, rng))
+                        Command::Assignment(Assignment(Target::gen(cx, rng), AExpr::gen(cx, rng)))
                     }),
                 ),
                 (0.6, Box::new(|cx, rng| Command::If(cx.many(1, 10, rng)))),

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::{Direction, MonotoneFramework},
-    ast::{AExpr, Array, BExpr, Int, Target, Variable},
+    ast::{AExpr, Array, BExpr, Int, Target, Variable, Assignment},
     interpreter::InterpreterError,
     pg::{Action, Edge, ProgramGraph},
 };
@@ -311,12 +311,12 @@ impl MonotoneFramework for SignAnalysis {
 
     fn semantic(&self, _pg: &ProgramGraph, e: &Edge, prev: &Self::Domain) -> Self::Domain {
         match e.action() {
-            Action::Assignment(Target::Variable(var), x) => prev
+            Action::Assignment(Assignment(Target::Variable(var), x)) => prev
                 .iter()
                 .flat_map(|mem| x.semantics_sign(mem).iter().map(move |s| (mem, s)))
                 .map(|(mem, s)| mem.clone().with_var(var, s))
                 .collect(),
-            Action::Assignment(Target::Array(arr, idx), expr) => prev
+            Action::Assignment(Assignment(Target::Array(arr, idx), expr)) => prev
                 .iter()
                 .flat_map(|mem| {
                     let idx_signs = idx.semantics_sign(mem);
@@ -349,6 +349,7 @@ impl MonotoneFramework for SignAnalysis {
                     }
                 })
                 .collect(),
+            Action::Atomic(_) => panic!("Sign analysis for atomics has not been implemented"),
             Action::Skip => prev.clone(),
             Action::Condition(b) => prev
                 .iter()

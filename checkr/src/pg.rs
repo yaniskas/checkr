@@ -7,7 +7,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target};
+use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand}, model_checking::traits::AddMany};
 
 #[derive(Debug, Clone)]
 pub struct ProgramGraph {
@@ -86,14 +86,18 @@ impl Node {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
-    Assignment(Target<Box<AExpr>>, AExpr),
+    Assignment(Assignment),
+    Atomic(Vec<SimpleCommand>),
     Skip,
     Condition(BExpr),
 }
 impl Action {
     fn fv(&self) -> HashSet<Target> {
         match self {
-            Action::Assignment(x, a) => x.fv().union(&a.fv()).cloned().collect(),
+            Action::Assignment(a) => a.fv(),
+            Action::Atomic(commands) => commands.iter().fold(HashSet::new(), |acc, e| {
+                acc.add_many(e.fv())
+            }),
             Action::Skip => Default::default(),
             Action::Condition(b) => b.fv(),
         }
@@ -119,7 +123,8 @@ impl Edge {
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Action::Assignment(v, x) => write!(f, "{v} := {x}"),
+            Action::Assignment(a) => a.fmt(f),
+            Action::Atomic(commands) => write!(f, "{}", commands.iter().format("; ")),
             Action::Skip => write!(f, "skip"),
             Action::Condition(b) => write!(f, "{b}"),
         }
@@ -188,8 +193,8 @@ fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edg
 impl Command {
     fn edges(&self, det: Determinism, s: Node, t: Node) -> Vec<Edge> {
         match self {
-            Command::Assignment(v, expr) => {
-                vec![Edge(s, Action::Assignment(v.clone(), expr.clone()), t)]
+            Command::Assignment(Assignment(v, expr)) => {
+                vec![Edge(s, Action::Assignment(Assignment(v.clone(), expr.clone())), t)]
             }
             Command::Skip => vec![Edge(s, Action::Skip, t)],
             Command::If(guards) => guard_edges(det, guards, s, t).0,
@@ -198,6 +203,7 @@ impl Command {
                 edges.push(Edge(s, Action::Condition(b), t));
                 edges
             }
+            Command::Atomic(commands) => vec![Edge(s, Action::Atomic(commands.clone()), t)],
             Command::Annotated(_, c, _) => c.edges(det, s, t),
             Command::Break => todo!(),
             Command::Continue => todo!(),

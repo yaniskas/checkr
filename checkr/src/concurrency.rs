@@ -78,7 +78,7 @@ mod test {
         rap
         ";
 
-        verify_satisfies(program, "[]<>{n = 0}");
+        verify_satisfies(program, "[]<>{i = 0}");
     }
 
     #[test]
@@ -91,7 +91,7 @@ mod test {
         rap
         ";
 
-        verify_satisfies(program, "[]<>{n = 1}");
+        verify_satisfies(program, "[]<>{i = 1}");
     }
 
     #[test]
@@ -105,5 +105,34 @@ mod test {
         ";
 
         verify_satisfies(program, "[]({i = 0} -> <>{i = 1})");
+    }
+
+    #[test]
+    fn peterson() {
+        let program = "
+        par
+            in1 := 1;
+            turn := 2;
+
+            if in2 = 0 || turn = 1 -> skip fi;
+
+            incrit := incrit + 1;
+            incrit := incrit - 1;
+
+            in1 := 0
+        [] 
+            in2 := 1;
+            turn := 1;
+
+            if in1 = 0 || turn = 2 -> skip fi;
+
+            incrit := incrit + 1;
+            incrit := incrit - 1;
+
+            in2 := 0
+        rap
+        ";
+
+        verify_satisfies(program, "[]{incrit < 2}");
     }
 }

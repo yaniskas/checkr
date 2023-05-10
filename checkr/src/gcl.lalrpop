@@ -37,13 +37,24 @@ pub Commands: Commands = SepNonEmpty<Command, ";"> => Commands(<>);
 
 Command: Command = {
     AnnotatedCommand,
-    <Target> ":=" <AExpr>   => Command::Assignment(<>),
+    Assignment              => Command::Assignment(<>),
     "if" <Guards> "fi"      => Command::If(<>),
     "do" <Guards> "od"      => Command::Loop(<>),
+    "ato" <SimpleCommands> "ota" => Command::Atomic(<>),
     "skip"                  => Command::Skip,
     "continue"              => Command::Continue,
     "break"                 => Command::Break,
 };
+
+SimpleCommands: Vec<SimpleCommand> = SepNonEmpty<SimpleCommand, ";">;
+
+SimpleCommand: SimpleCommand = {
+    Assignment => SimpleCommand::Assignment(<>),
+}
+
+Assignment: Assignment = {
+    <Target> ":=" <AExpr> => Assignment(<>)
+}
 
 #[inline]
 Target: Target<Box<AExpr>> = {
@@ -142,7 +153,7 @@ pub AnnotatedCommand: Command = PredicateBlock ECommands PredicateBlock => Comma
 ECommands: Commands = SepNonEmpty<ECommand, ";"> => Commands(<>);
 
 ECommand: Command = {
-    <Target> ":=" <AExpr>                 => Command::Assignment(<>),
+    Assignment                            => Command::Assignment(<>),
     "if" <EGuards> "fi"                   => Command::If(<>),
     "do" <PredicateBlock> <EGuards> "od"  => Command::EnrichedLoop(<>),
     "skip"                                => Command::Skip,

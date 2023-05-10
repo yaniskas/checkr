@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicU64;
 
 use crate::ast::{
-    AExpr, BExpr, Command, Commands, Function, Guard, LogicOp, Quantifier, RelOp, Target, Variable,
+    AExpr, BExpr, Command, Commands, Function, Guard, LogicOp, Quantifier, RelOp, Target, Variable, Assignment,
 };
 
 impl Commands {
@@ -30,7 +30,7 @@ impl Command {
     }
     pub fn sp(&self, p: &BExpr) -> BExpr {
         match self {
-            Command::Assignment(x, e) => {
+            Command::Assignment(Assignment(x, e)) => {
                 fn fresh() -> Target<Box<AExpr>> {
                     Target::Variable(Variable(format!(
                         "_fresh_{}",
@@ -62,6 +62,7 @@ impl Command {
                 .map(|gc| BExpr::Not(gc.0.clone().into()))
                 .reduce(|a, b| BExpr::logic(a, LogicOp::Land, b))
                 .unwrap(),
+            Command::Atomic(_) => panic!("Program verification for atomics has not been implemented"),
             Command::EnrichedLoop(i, guards) => {
                 let done = guards
                     .iter()
@@ -78,11 +79,12 @@ impl Command {
     }
     pub fn vc(&self, r: &BExpr) -> Vec<BExpr> {
         match self {
-            Command::Assignment(_, _) => vec![],
+            Command::Assignment(Assignment(_, _)) => vec![],
             Command::Skip => vec![],
             Command::If(guards) => guards_vc(guards, r),
             // TODO: Could we make something more useful/obvious here?
             Command::Loop(_) => vec![],
+            Command::Atomic(_) => panic!("Program verification for atomics has not been implemented"),
             Command::EnrichedLoop(i, guards) => {
                 let mut conditions = vec![
                     BExpr::logic(r.clone(), LogicOp::Implies, i.clone()),

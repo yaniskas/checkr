@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::ast::{
     AExpr, AOp, Array, BExpr, Command, Commands, Function, Guard, LogicOp, Quantifier, RelOp,
-    Target, Variable,
+    Target, Variable, Assignment, SimpleCommand
 };
 
 impl Display for Variable {
@@ -35,12 +35,28 @@ impl std::fmt::Display for Target<()> {
     }
 }
 
+impl Display for Assignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Assignment(target, expr) = self;
+        write!(f, "{target} := {expr}")
+    }
+}
+
+impl Display for SimpleCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimpleCommand::Assignment(a) => a.fmt(f)
+        }
+    }
+}
+
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Command::Assignment(target, expr) => write!(f, "{target} := {expr}"),
+            Command::Assignment(a) => a.fmt(f),
             Command::If(guards) => write!(f, "if {}\nfi", guards.iter().format("\n[] ")),
             Command::Loop(guards) => write!(f, "do {}\nod", guards.iter().format("\n[] ")),
+            Command::Atomic(commands) => write!(f, "ato {}\nota", commands.iter().format("\n; ")),
             Command::EnrichedLoop(pred, guards) => {
                 write!(f, "do {{{pred}}}\n   {}\nod", guards.iter().format("\n[] "))
             }

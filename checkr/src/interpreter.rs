@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{AExpr, AOp, BExpr, Function, Int, LogicOp, RelOp, Target},
+    ast::{AExpr, AOp, BExpr, Function, Int, LogicOp, RelOp, Target, Assignment, SimpleCommand},
     pg::{Action, Node, ProgramGraph},
     sign::Memory,
 };
@@ -91,10 +91,10 @@ impl Interpreter {
     }
 }
 
-impl Action {
+impl Assignment {
     pub fn semantics(&self, m: &InterpreterMemory) -> Result<InterpreterMemory, InterpreterError> {
         match self {
-            Action::Assignment(Target::Variable(x), a) => {
+            Assignment(Target::Variable(x), a) => {
                 if m.variables.contains_key(x) {
                     let mut m2 = m.clone();
                     m2.variables.insert(x.clone(), a.semantics(m)?);
@@ -105,7 +105,7 @@ impl Action {
                     })
                 }
             }
-            Action::Assignment(Target::Array(arr, idx), a) => {
+            Assignment(Target::Array(arr, idx), a) => {
                 let idx = idx.semantics(m)?;
                 match m.get_arr(arr) {
                     Some(data) if 0 <= idx && idx < data.len() as _ => {
@@ -122,6 +122,30 @@ impl Action {
                         index: idx,
                     }),
                 }
+            }
+        }
+    }
+}
+
+impl SimpleCommand {
+    pub fn semantics(&self, m: &InterpreterMemory) -> Result<InterpreterMemory, InterpreterError> {
+        match self {
+            SimpleCommand::Assignment(a) => a.semantics(m)
+        }
+    }
+}
+
+impl Action {
+    pub fn semantics(&self, m: &InterpreterMemory) -> Result<InterpreterMemory, InterpreterError> {
+        match self {
+            Action::Assignment(a) => a.semantics(m),
+            Action::Atomic(commands) => {
+                commands.iter().fold(Ok(m.clone()), |acc, cmd| {
+                    match acc {
+                        Result::Ok(acc_mem) => cmd.semantics(&acc_mem),
+                        err => err,
+                    }
+                })
             }
             Action::Skip => Ok(m.clone()),
             Action::Condition(b) => {

@@ -4,7 +4,7 @@ use itertools::{chain, Itertools};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{Command, Commands, Guard, Target},
+    ast::{Command, Commands, Guard, Target, Assignment},
     gcl,
     parse::ParseError,
     sign::Memory,
@@ -55,7 +55,7 @@ impl Commands {
 impl Command {
     fn sec(&self, implicit: &HashSet<Target>) -> HashSet<Flow<Target>> {
         match self {
-            Command::Assignment(t, a) => chain!(
+            Command::Assignment(Assignment(t, a)) => chain!(
                 implicit.iter().cloned(),
                 match t {
                     Target::Variable(_) => Default::default(),
@@ -84,6 +84,7 @@ impl Command {
                     )
                     .1
             }
+            Command::Atomic(_) => panic!("Security analysis for atomics has not been implemented"),
             Command::Annotated(_, c, _) => c.sec(implicit),
             Command::Break => HashSet::default(),
             Command::Continue => HashSet::default(),

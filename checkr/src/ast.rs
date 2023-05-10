@@ -3,6 +3,8 @@ use std::{collections::HashSet, str::FromStr};
 use itertools::Either;
 use serde::{Deserialize, Serialize};
 
+use crate::model_checking::traits::AddMany;
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Target<Idx = ()> {
     Variable(Variable),
@@ -143,10 +145,11 @@ pub struct Commands(pub Vec<Command>);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Command {
-    Assignment(Target<Box<AExpr>>, AExpr),
+    Assignment(Assignment),
     Skip,
     If(Vec<Guard>),
     Loop(Vec<Guard>),
+    Atomic(Vec<SimpleCommand>),
     /// **Extension**
     EnrichedLoop(Predicate, Vec<Guard>),
     /// **Extension**
@@ -156,6 +159,14 @@ pub enum Command {
     /// **Extension**
     Continue,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SimpleCommand {
+    Assignment(Assignment)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Assignment(pub Target<Box<AExpr>>, pub AExpr);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Guard(pub BExpr, pub Commands);
@@ -235,13 +246,29 @@ impl Commands {
         self.0.iter().flat_map(|c| c.fv()).collect()
     }
 }
+impl Assignment {
+    pub fn fv(&self) -> HashSet<Target> {
+        let Assignment(x, a) = self;
+        x.fv().union(&a.fv()).cloned().collect()
+    }
+}
+impl SimpleCommand {
+    pub fn fv(&self) -> HashSet<Target> {
+        match self {
+            SimpleCommand::Assignment(a) => a.fv()
+        }
+    }
+}
 impl Command {
     pub fn fv(&self) -> HashSet<Target> {
         match self {
-            Command::Assignment(x, a) => x.fv().union(&a.fv()).cloned().collect(),
+            Command::Assignment(a) => a.fv(),
             Command::Skip => HashSet::default(),
             Command::If(c) => guards_fv(c),
             Command::Loop(c) => guards_fv(c),
+            Command::Atomic(cs) => cs.iter().fold(HashSet::new(), |acc, e| {
+                acc.add_many(e.fv())
+            }),
             // TODO: Maybe the pred should also be looked at?
             Command::EnrichedLoop(_, c) => guards_fv(c),
             // TODO: Maybe the pred should also be looked at?
