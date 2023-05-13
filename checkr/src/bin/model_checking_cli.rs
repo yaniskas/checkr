@@ -1,14 +1,14 @@
 use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands}, model_checking::{ModelCheckMemory, check_model}};
+use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, ParallelCommands}, model_checking::{ModelCheckMemory, check_model}, concurrency::ParallelProgramGraph};
 
 fn main() {
     let commands = ask_for_with_parser(
         "Please enter a GCL program: ", 
         "Please enter a valid program", 
-        parse::parse_commands
+        parse::parse_parallel_commands
     );
-    let graph = ProgramGraph::new(Determinism::NonDeterministic, &commands);
+    let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &commands);
 
     let memory = ask_for_memory_assignment(commands);
 
@@ -64,7 +64,7 @@ fn ask_for_with_parser<T, E>(msg: &str, failmsg: &str, parser: impl Fn(&str) -> 
     }
 }
 
-fn ask_for_memory_assignment(commands: Commands) -> ModelCheckMemory {
+fn ask_for_memory_assignment(commands: ParallelCommands) -> ModelCheckMemory {
     let assignment_targets = commands.fv();
     let mut var_map = BTreeMap::new();
     let mut arr_map = BTreeMap::new();

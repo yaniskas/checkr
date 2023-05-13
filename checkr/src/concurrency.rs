@@ -66,7 +66,7 @@ pub fn next_configurations(ppg: &ParallelProgramGraph, config: &ParallelConfigur
 
 #[cfg(test)]
 mod test {
-    use crate::model_checking::ltl_verification::test::verify_satisfies;
+    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies};
 
     #[test]
     fn flip_flop() {
@@ -111,28 +111,217 @@ mod test {
     fn peterson() {
         let program = "
         par
-            in1 := 1;
-            turn := 2;
+            do true ->
+                in1 := 1;
+                turn := 2;
 
-            if in2 = 0 || turn = 1 -> skip fi;
+                if in2 = 0 || turn = 1 -> skip fi;
 
-            incrit := incrit + 1;
-            incrit := incrit - 1;
+                incrit := incrit + 1;
+                incrit := incrit - 1;
 
-            in1 := 0
+                in1 := 0
+            od
         [] 
-            in2 := 1;
-            turn := 1;
+            do true ->
+                in2 := 1;
+                turn := 1;
 
-            if in1 = 0 || turn = 2 -> skip fi;
+                if in1 = 0 || turn = 2 -> skip fi;
 
-            incrit := incrit + 1;
-            incrit := incrit - 1;
+                incrit := incrit + 1;
+                incrit := incrit - 1;
 
-            in2 := 0
+                in2 := 0
+            od
         rap
         ";
 
         verify_satisfies(program, "[]{incrit < 2}");
+    }
+
+    #[test]
+    fn peterson_obligingness() {
+        let program = "
+        par
+            do true ->
+                entry1 := 1;
+                in1 := 1;
+                entry1 := 0;
+                turn := 2;
+
+                if in2 = 0 || turn = 1 -> skip fi;
+
+                crit1 := 1;
+                incrit := incrit + 1;
+                crit1 := 0;
+                incrit := incrit - 1;
+
+                in1 := 0
+            od
+        [] 
+            do true ->
+                entry2 := 1;
+                in2 := 1;
+                entry2 := 0;
+                turn := 1;
+
+                if in1 = 0 || turn = 2 -> skip fi;
+
+                incrit := incrit + 1;
+                incrit := incrit - 1;
+
+                in2 := 0
+            od
+        rap
+        ";
+
+        verify_satisfies(program, "[]( ({entry1 = 1} && []!{entry2 = 1}) -> <>{crit1 = 1} )");
+    }
+
+    #[test]
+    fn peterson_resolution() {
+        let program = "
+        par
+            do true ->
+                entry1 := 1;
+                in1 := 1;
+                entry1 := 0;
+                turn := 2;
+
+                if in2 = 0 || turn = 1 -> skip fi;
+
+                crit1 := 1;
+                incrit := incrit + 1;
+                crit1 := 0;
+                incrit := incrit - 1;
+
+                in1 := 0
+            od
+        [] 
+            do true ->
+                entry2 := 1;
+                in2 := 1;
+                entry2 := 0;
+                turn := 1;
+
+                if in1 = 0 || turn = 2 -> skip fi;
+
+                incrit := incrit + 1;
+                incrit := incrit - 1;
+
+                in2 := 0
+            od
+        rap
+        ";
+
+        verify_satisfies(program, "[]( ({entry1 = 1} || {entry2 = 1}) -> <>({crit1 = 1} || {crit2 = 1}) )");
+    }
+
+    #[test]
+    fn peterson_not_fair() {
+        let program = "
+        par
+            do true ->
+                entry1 := 1;
+                in1 := 1;
+                entry1 := 0;
+                turn := 2;
+
+                if in2 = 0 || turn = 1 -> skip fi;
+
+                crit1 := 1;
+                incrit := incrit + 1;
+                crit1 := 0;
+                incrit := incrit - 1;
+
+                in1 := 0
+            od
+        [] 
+            do true ->
+                entry2 := 1;
+                in2 := 1;
+                entry2 := 0;
+                turn := 1;
+
+                if in1 = 0 || turn = 2 -> skip fi;
+
+                incrit := incrit + 1;
+                incrit := incrit - 1;
+
+                in2 := 0
+            od
+        rap
+        ";
+
+        verify_not_satisfies(program, "[]( {entry1 = 1} -> <>{crit1 = 1} )");
+    }
+
+    #[test]
+    fn peterson_not_fair_2() {
+        let program = "
+        par
+            do true ->
+                entry1 := 1;
+                in1 := 1;
+                entry1 := 0;
+                turn := 2;
+
+                if in2 = 0 || turn = 1 -> skip fi;
+
+                crit1 := 1;
+                incrit := incrit + 1;
+                crit1 := 0;
+                incrit := incrit - 1;
+
+                in1 := 0
+            od
+        [] 
+            do true ->
+                entry2 := 1;
+                in2 := 1;
+                entry2 := 0;
+                turn := 1;
+
+                if in1 = 0 || turn = 2 -> skip fi;
+
+                incrit := incrit + 1;
+                incrit := incrit - 1;
+
+                in2 := 0
+            od
+        rap
+        ";
+
+        verify_not_satisfies(program, "[]( {entry2 = 1} -> <>{crit2 = 1} )");
+    }
+
+    #[test]
+    fn atomic() {
+        let program = "
+        do true ->
+            ato x := 1; x := 2 ota
+        od
+        ";
+
+        verify_satisfies(program, "[]!{x = 1}");
+    }
+
+    #[test]
+    fn ticket() {
+        let program = "
+        par
+            do true ->
+                r := 1;
+
+                entry1 := 1;
+                do r = 1 -> ato 
+                
+        []
+
+        rap
+        ";
+
+        verify_satisfies(program, "[]!{x = 1}");
     }
 }

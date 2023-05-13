@@ -241,6 +241,12 @@ pub enum LogicOp {
     Implies,
 }
 
+impl ParallelCommands {
+    pub fn fv(&self) -> HashSet<Target> {
+        self.0.iter().flat_map(|c| c.fv()).collect()
+    }
+}
+
 impl Commands {
     pub fn fv(&self) -> HashSet<Target> {
         self.0.iter().flat_map(|c| c.fv()).collect()
