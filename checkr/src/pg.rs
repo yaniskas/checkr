@@ -1,13 +1,12 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    sync::atomic::AtomicU64,
 };
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand}, model_checking::traits::AddMany};
+use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand, AtomicStatement, SimpleCommands, AtomicGuard, AtomicGuards}, model_checking::traits::AddMany};
 
 #[derive(Debug, Clone)]
 pub struct ProgramGraph {
@@ -72,22 +71,27 @@ impl std::fmt::Display for Node {
     }
 }
 
-static NODE_ID: AtomicU64 = AtomicU64::new(0);
-impl Node {
-    fn fresh() -> Node {
-        Node::Node(NodeId(
-            NODE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        ))
+pub struct NodeFactory {
+    next_id: u64,
+}
+
+impl NodeFactory {
+    pub fn new() -> Self {
+        NodeFactory {next_id: 0}
     }
-    fn reset() {
-        NODE_ID.store(0, std::sync::atomic::Ordering::Relaxed);
+
+    pub fn fresh(&mut self) -> Node {
+        let res = Node::Node(NodeId(self.next_id));
+        self.next_id += 1;
+        res
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
     Assignment(Assignment),
-    Atomic(Vec<SimpleCommand>),
+    Atomic(SimpleCommands),
+    ConditionalAtomic(BExpr, SimpleCommands),
     Skip,
     Condition(BExpr),
 }
@@ -95,9 +99,8 @@ impl Action {
     fn fv(&self) -> HashSet<Target> {
         match self {
             Action::Assignment(a) => a.fv(),
-            Action::Atomic(commands) => commands.iter().fold(HashSet::new(), |acc, e| {
-                acc.add_many(e.fv())
-            }),
+            Action::Atomic(commands) => commands.fv(),
+            Action::ConditionalAtomic(b, commands) => b.fv().add_many(commands.fv()),
             Action::Skip => Default::default(),
             Action::Condition(b) => b.fv(),
         }
@@ -124,7 +127,8 @@ impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Action::Assignment(a) => a.fmt(f),
-            Action::Atomic(commands) => write!(f, "{}", commands.iter().format("; ")),
+            Action::Atomic(commands) => write!(f, "{}", commands.0.iter().format("; ")),
+            Action::ConditionalAtomic(b, commands) => write!(f, "{} -> {}", b, commands.0.iter().format("; ")),
             Action::Skip => write!(f, "skip"),
             Action::Condition(b) => write!(f, "{b}"),
         }
@@ -132,14 +136,14 @@ impl std::fmt::Display for Action {
 }
 
 impl Commands {
-    fn edges(&self, det: Determinism, s: Node, t: Node) -> Vec<Edge> {
+    fn edges(&self, det: Determinism, s: Node, t: Node, node_factory: &mut NodeFactory) -> Vec<Edge> {
         let mut edges = vec![];
 
         let mut prev = s;
         for (idx, cmd) in self.0.iter().enumerate() {
             let is_last = idx + 1 == self.0.len();
-            let next = if is_last { t } else { Node::fresh() };
-            edges.extend(cmd.edges(det, prev, next));
+            let next = if is_last { t } else { node_factory.fresh() };
+            edges.extend(cmd.edges(det, prev, next, node_factory));
             prev = next;
         }
 
@@ -148,7 +152,7 @@ impl Commands {
 }
 
 /// Computes the edges and the condition which is true iff all guards are false
-fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edge>, BExpr) {
+fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node, node_factory: &mut NodeFactory) -> (Vec<Edge>, BExpr) {
     match det {
         Determinism::Deterministic => {
             // See the "if" and "do" Commands on Page 25 of Formal Methods
@@ -157,7 +161,7 @@ fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edg
             let mut edges = vec![];
 
             for Guard(b, c) in guards {
-                let q = Node::fresh();
+                let q = node_factory.fresh();
 
                 edges.push(Edge(
                     s,
@@ -168,7 +172,7 @@ fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edg
                     )),
                     q,
                 ));
-                edges.extend(c.edges(det, q, t));
+                edges.extend(c.edges(det, q, t, node_factory));
                 prev = BExpr::logic(b.to_owned().clone(), LogicOp::Lor, prev);
             }
 
@@ -179,8 +183,8 @@ fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edg
             let e = guards
                 .iter()
                 .flat_map(|Guard(b, c)| {
-                    let q = Node::fresh();
-                    let mut edges = c.edges(det, q, t);
+                    let q = node_factory.fresh();
+                    let mut edges = c.edges(det, q, t, node_factory);
                     edges.push(Edge(s, Action::Condition(b.clone()), q));
                     edges
                 })
@@ -191,23 +195,46 @@ fn guard_edges(det: Determinism, guards: &[Guard], s: Node, t: Node) -> (Vec<Edg
 }
 
 impl Command {
-    fn edges(&self, det: Determinism, s: Node, t: Node) -> Vec<Edge> {
+    fn edges(&self, det: Determinism, s: Node, t: Node, node_factory: &mut NodeFactory) -> Vec<Edge> {
         match self {
             Command::Assignment(Assignment(v, expr)) => {
                 vec![Edge(s, Action::Assignment(Assignment(v.clone(), expr.clone())), t)]
             }
             Command::Skip => vec![Edge(s, Action::Skip, t)],
-            Command::If(guards) => guard_edges(det, guards, s, t).0,
+            Command::If(guards) => guard_edges(det, guards, s, t, node_factory).0,
             Command::Loop(guards) | Command::EnrichedLoop(_, guards) => {
-                let (mut edges, b) = guard_edges(det, guards, s, s);
+                let (mut edges, b) = guard_edges(det, guards, s, s, node_factory);
                 edges.push(Edge(s, Action::Condition(b), t));
                 edges
             }
-            Command::Atomic(commands) => vec![Edge(s, Action::Atomic(commands.clone()), t)],
-            Command::Annotated(_, c, _) => c.edges(det, s, t),
+            Command::Atomic(statement) => statement.edges(s, t),
+            Command::Annotated(_, c, _) => c.edges(det, s, t, node_factory),
             Command::Break => todo!(),
             Command::Continue => todo!(),
         }
+    }
+}
+
+impl AtomicStatement {
+    fn edges(&self, s: Node, t: Node) -> Vec<Edge> {
+        match self {
+            AtomicStatement::SimpleCommands(commands) => commands.edges(s, t),
+            AtomicStatement::AtomicGuards(guards) => guards.edges(s, t),
+        }
+    }
+}
+
+impl SimpleCommands {
+    fn edges(&self, s: Node, t: Node) -> Vec<Edge> {
+        vec![Edge(s, Action::Atomic(self.clone()), t)]
+    }
+}
+
+impl AtomicGuards {
+    fn edges(&self, s: Node, t: Node) -> Vec<Edge> {
+        self.0.iter()
+            .map(|AtomicGuard(bexp, commands)| Edge(s, Action::ConditionalAtomic(bexp.clone(), commands.clone()), t))
+            .collect()
     }
 }
 
@@ -221,8 +248,8 @@ fn done(guards: &[Guard]) -> BExpr {
 
 impl ProgramGraph {
     pub fn new(det: Determinism, cmds: &Commands) -> Self {
-        Node::reset();
-        let edges = cmds.edges(det, Node::Start, Node::End);
+        let mut node_factory = NodeFactory::new();
+        let edges = cmds.edges(det, Node::Start, Node::End, &mut node_factory);
         let mut outgoing: HashMap<Node, Vec<Edge>> = HashMap::new();
         let mut nodes: HashSet<Node> = Default::default();
 

@@ -28,11 +28,11 @@ impl GBA {
     pub fn from_vwaa(vwaa: VWAA) -> GBA {
         let VWAA { states, delta, initial_states, final_states } = vwaa;
         
-        println!("Initial states subset of states: {}", initial_states.is_subset(&states));
+        // println!("Initial states subset of states: {}", initial_states.is_subset(&states));
         let q_prime = ltl_power_set(states);
 
-        println!("Original number of states: {}", q_prime.len());
-        println!("States: {:?}", q_prime);
+        // println!("Original number of states: {}", q_prime.len());
+        // println!("States: {:?}", q_prime);
 
         let delta2prime = q_prime.iter()
             .map(|ltlcon| {
@@ -48,13 +48,13 @@ impl GBA {
             .collect::<BTreeMap<_, _>>();
 
         let initial_state = LTLConjunction::new(initial_states.into_iter().collect::<BTreeSet<_>>());
-        println!("Initial state: {}", &initial_state);
-        println!("In Q_prime: {}", q_prime.contains(&initial_state));
+        // println!("Initial state: {}", &initial_state);
+        // println!("In Q_prime: {}", q_prime.contains(&initial_state));
         
-        println!("Number of transition results before removing non-reachable: {}", delta2prime.len());
+        // println!("Number of transition results before removing non-reachable: {}", delta2prime.len());
         let delta2prime = get_reachable(delta2prime, &initial_state);
-        println!("Number of transition results after removing non-reachable: {}", delta2prime.len());
-        println!("{:?}", delta2prime);
+        // println!("Number of transition results after removing non-reachable: {}", delta2prime.len());
+        // println!("{:?}", delta2prime);
 
         let delta2primetransitions = delta2prime
             .clone()
@@ -65,21 +65,21 @@ impl GBA {
             .collect::<BTreeSet<_>>();
 
         let accepting_transitions = find_accepting_transitions(&final_states, &delta, &delta2prime);
-        println!("Number of accepting transition sets: {}", accepting_transitions.len());
+        // println!("Number of accepting transition sets: {}", accepting_transitions.len());
         for ats in &accepting_transitions {
-            println!("Number of accepting transitions: {}", ats.len());
-            println!("Accepting transitions in this set:");
+            // println!("Number of accepting transitions: {}", ats.len());
+            // println!("Accepting transitions in this set:");
             for at in ats {
-                print!("Transition: ");
+                // print!("Transition: ");
                 let GBATransition(source, action, target) = at;
-                println!("source: {} action: {} target: {}", source, action, target);
+                // println!("source: {} action: {} target: {}", source, action, target);
             }
         }
 
-        println!("Number of transitions before reduction: {}", delta2primetransitions.len());
+        // println!("Number of transitions before reduction: {}", delta2primetransitions.len());
         let deltaprimetransitions = remove_non_minimal(delta2primetransitions, transition_comparator(&accepting_transitions));
         // let deltaprimetransitions = delta2primetransitions;
-        println!("Number of transitions after reduction: {}", deltaprimetransitions.len());
+        // println!("Number of transitions after reduction: {}", deltaprimetransitions.len());
 
         let accepting_transitions = accepting_transitions.into_iter()
             .map(|ats| {
@@ -88,15 +88,15 @@ impl GBA {
                     .collect::<BTreeSet<_>>()
             })
             .collect::<BTreeSet<_>>();
-        println!("Number of accepting transition sets: {}", accepting_transitions.len());
+        // println!("Number of accepting transition sets: {}", accepting_transitions.len());
         for ats in &accepting_transitions {
-            println!("Number of accepting transitions: {}", ats.len());
+            // println!("Number of accepting transitions: {}", ats.len());
         }
 
         let delta_prime = agglomerate_transitions(deltaprimetransitions);
         
-        println!("Delta prime:");
-        println!("{}", delta_prime.contains_key(&initial_state));
+        // println!("Delta prime:");
+        // println!("{}", delta_prime.contains_key(&initial_state));
 
         // let Q_prime = delta_prime.iter()
         //     .map(|(source, targets)| source.clone())
@@ -197,10 +197,10 @@ fn get_reachable(delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>,
     let mut queue = VecDeque::new();
     queue.push_back(initial);
     while let Some(current_state) = queue.pop_front() {
-        println!("Current state: {}", current_state);
+        // println!("Current state: {}", current_state);
 
         if (visited.contains(current_state)) {
-            println!("State already visited");
+            // println!("State already visited");
             continue;
         }
 

@@ -8,6 +8,26 @@ use crate::{pg::{ProgramGraph, Action, Determinism, Node}, interpreter::{Configu
 pub struct ParallelProgramGraph(pub Vec<ProgramGraph>);
 
 impl ParallelProgramGraph {
+    pub fn dot(&self) -> String {
+        format!(
+            "digraph G {{\n{}\n}}",
+            self.0.iter().enumerate().flat_map(|(i, pg)| pg.edges().iter().map(move |edges| (i, edges)))
+            .map(|(i, e)| format!(
+                    "  {:?}[label=\"{}\"]; {:?} -> {:?}[label={:?}]; {:?}[label=\"{}\"];",
+                    format!("{}, {}", i, e.0),
+                    format!("{}, {}", i, e.0),
+                    format!("{}, {}", i, e.0),
+                    format!("{}, {}", i, e.2),
+                    e.1.to_string(),
+                    format!("{}, {}", i, e.2),
+                    format!("{}, {}", i, e.1),
+                ))
+                .format("  \n")
+        )
+    }
+}
+
+impl ParallelProgramGraph {
     pub fn new(det: Determinism, pcmds: &ParallelCommands) -> ParallelProgramGraph {
         ParallelProgramGraph(pcmds.0.iter().map(|e| ProgramGraph::new(det, e)).collect())
     }
@@ -52,8 +72,8 @@ pub fn next_configurations(ppg: &ParallelProgramGraph, config: &ParallelConfigur
             let pg_config = Configuration {node: node.clone(), memory: memory.clone()};
 
             next_configurations_pg(pg, &pg_config).into_iter()
-                .map(move |(action, pg_config)| {
-                    let Configuration {node: new_pg_node, memory: new_memory} = pg_config;
+                .map(move |(action, new_pg_config)| {
+                    let Configuration {node: new_pg_node, memory: new_memory} = new_pg_config;
 
                     let mut new_config = ParallelConfiguration {nodes: config.nodes.clone(), memory: new_memory};
                     new_config.nodes[index] = new_pg_node;
@@ -66,7 +86,7 @@ pub fn next_configurations(ppg: &ParallelProgramGraph, config: &ParallelConfigur
 
 #[cfg(test)]
 mod test {
-    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies};
+    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies, verify_satisfies_name};
 
     #[test]
     fn flip_flop() {
@@ -176,7 +196,7 @@ mod test {
         rap
         ";
 
-        verify_satisfies(program, "[]( ({entry1 = 1} && []!{entry2 = 1}) -> <>{crit1 = 1} )");
+        verify_satisfies(program, "[]( ({entry1 = 1} && []!{entry2 = 1}) -> <>{crit1 = 1} )")
     }
 
     #[test]
@@ -285,7 +305,9 @@ mod test {
 
                 if in1 = 0 || turn = 2 -> skip fi;
 
+                crit2 := 1;
                 incrit := incrit + 1;
+                crit2 := 0;
                 incrit := incrit - 1;
 
                 in2 := 0
@@ -308,20 +330,15 @@ mod test {
     }
 
     #[test]
-    fn ticket() {
+    fn cond_atomic() {
         let program = "
-        par
-            do true ->
-                r := 1;
-
-                entry1 := 1;
-                do r = 1 -> ato 
-                
-        []
-
-        rap
+        do true ->
+            ato x = 0 -> x := 1
+            [] x = 1 -> x := 0
+            ota
+        od
         ";
 
-        verify_satisfies(program, "[]!{x = 1}");
+        verify_satisfies(program, "[](({x = 0} -> ()(){x = 1}) && ({x = 1} -> ()(){x = 0}))");
     }
 }

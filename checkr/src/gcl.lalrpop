@@ -40,17 +40,28 @@ Command: Command = {
     Assignment              => Command::Assignment(<>),
     "if" <Guards> "fi"      => Command::If(<>),
     "do" <Guards> "od"      => Command::Loop(<>),
-    "ato" <SimpleCommands> "ota" => Command::Atomic(<>),
+    "ato" <AtomicStatement> "ota" => Command::Atomic(<>),
     "skip"                  => Command::Skip,
     "continue"              => Command::Continue,
     "break"                 => Command::Break,
 };
 
-SimpleCommands: Vec<SimpleCommand> = SepNonEmpty<SimpleCommand, ";">;
+AtomicStatement: AtomicStatement = {
+    SimpleCommands => AtomicStatement::SimpleCommands(<>),
+    AtomicGuards => AtomicStatement::AtomicGuards(<>),
+}
+
+SimpleCommands: SimpleCommands = SepNonEmpty<SimpleCommand, ";"> => SimpleCommands(<>);
 
 SimpleCommand: SimpleCommand = {
     Assignment => SimpleCommand::Assignment(<>),
 }
+
+AtomicGuards: AtomicGuards = Sep<AtomicGuard, "[]"> => AtomicGuards(<>);
+
+AtomicGuard: AtomicGuard = {
+    <BExpr> "->" <SimpleCommands> => AtomicGuard(<>),
+};
 
 Assignment: Assignment = {
     <Target> ":=" <AExpr> => Assignment(<>)

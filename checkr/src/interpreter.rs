@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{AExpr, AOp, BExpr, Function, Int, LogicOp, RelOp, Target, Assignment, SimpleCommand},
+    ast::{AExpr, AOp, BExpr, Function, Int, LogicOp, RelOp, Target, Assignment, SimpleCommand, SimpleCommands},
     pg::{Action, Node, ProgramGraph},
     sign::Memory,
 };
@@ -135,17 +135,28 @@ impl SimpleCommand {
     }
 }
 
+impl SimpleCommands {
+    pub fn semantics(&self, m: &InterpreterMemory) -> Result<InterpreterMemory, InterpreterError> {
+        self.0.iter().fold(Ok(m.clone()), |acc, cmd| {
+            match acc {
+                Result::Ok(acc_mem) => cmd.semantics(&acc_mem),
+                err => err,
+            }
+        })
+    }
+}
+
 impl Action {
     pub fn semantics(&self, m: &InterpreterMemory) -> Result<InterpreterMemory, InterpreterError> {
         match self {
             Action::Assignment(a) => a.semantics(m),
-            Action::Atomic(commands) => {
-                commands.iter().fold(Ok(m.clone()), |acc, cmd| {
-                    match acc {
-                        Result::Ok(acc_mem) => cmd.semantics(&acc_mem),
-                        err => err,
-                    }
-                })
+            Action::Atomic(commands) => commands.semantics(m),
+            Action::ConditionalAtomic(b, commands) => {
+                if b.semantics(m)? {
+                    commands.semantics(m)
+                } else {
+                    Err(InterpreterError::NoProgression)
+                }
             }
             Action::Skip => Ok(m.clone()),
             Action::Condition(b) => {

@@ -47,13 +47,25 @@ pub fn zero_initialized_memory(pg: &ParallelProgramGraph, array_length: usize) -
 #[cfg(test)]
 pub mod test {
     use std::collections::{HashMap, BTreeMap};
+    use std::fs;
 
     use crate::{parse::{parse_commands, parse_parallel_commands}, pg::Determinism, ast::Target, model_checking::{traits::Add, ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
 
     use super::*;
 
-    fn verify(program: &str, ltl: &str) -> LTLVerificationResult {
+    pub fn verify(program: &str, ltl: &str) -> LTLVerificationResult {
         let pg = ParallelProgramGraph::new(Determinism::NonDeterministic, &parse_parallel_commands(program).unwrap());
+        verify_ltl(
+            &pg,
+            parse_ltl(ltl).unwrap(),
+            &zero_initialized_memory(&pg, 10),
+            100
+        )
+    }
+
+    pub fn verify_name(program: &str, ltl: &str, name: &str) -> LTLVerificationResult {
+        let pg = ParallelProgramGraph::new(Determinism::NonDeterministic, &parse_parallel_commands(program).unwrap());
+        fs::write(format!("{}.dot", name), pg.dot()).unwrap();
         verify_ltl(
             &pg,
             parse_ltl(ltl).unwrap(),
@@ -64,6 +76,10 @@ pub mod test {
 
     pub fn verify_satisfies(program: &str, ltl: &str) {
         assert_eq!(verify(program, ltl), LTLVerificationResult::CycleNotFound)
+    }
+
+    pub fn verify_satisfies_name(program: &str, ltl: &str, name: &str) {
+        assert_eq!(verify_name(program, ltl, name), LTLVerificationResult::CycleNotFound)
     }
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
@@ -154,23 +170,21 @@ pub mod test {
 
     #[test]
     fn loop_switch() {
-        loop {
-            let program = "
-            i := 10;
-            do true ->
-                do i < 20 ->
-                    i := i + 1
-                od;
-                i := 10
-            [] true ->
-                do i > 0 ->
-                    i := i - 1
-                od;
-                i := 10
-            od
-            ";
-            verify_satisfies(program, "[]({i = 11} -> <> {i = 20})");
-        }
+        let program = "
+        i := 10;
+        do true ->
+            do i < 20 ->
+                i := i + 1
+            od;
+            i := 10
+        [] true ->
+            do i > 0 ->
+                i := i - 1
+            od;
+            i := 10
+        od
+        ";
+        verify_satisfies(program, "[]({i = 11} -> <> {i = 20})");
     }
 
     #[test]

@@ -92,9 +92,9 @@ pub trait SimplifiableAutomaton: Clone + Eq {
                 let state1 = &state_vec[i];
                 let state2 = &state_vec[j];
                 if self.states_equivalent(state1, state2) {
-                    println!("The following states are equivalent:");
-                    println!("{:?}", state1);
-                    println!("{:?}", state2);
+                    // println!("The following states are equivalent:");
+                    // println!("{:?}", state1);
+                    // println!("{:?}", state2);
                     self.get_next_states(state1);
                     self.get_next_states(state2);
                     to_merge.push((state1.clone(), state2.clone()));
@@ -119,11 +119,11 @@ impl SimplifiableAutomaton for GBA {
     }
 
     fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
-        println!("Results:");
+        // println!("Results:");
         match self.delta.get(&state) {
             Some(results) => results.iter().map(|(symcon, target)| {
-                println!("{}", symcon);
-                println!("{:?}", target);
+                // println!("{}", symcon);
+                // println!("{:?}", target);
                 target.clone()
         }).collect(),
             None => BTreeSet::new()
@@ -131,7 +131,7 @@ impl SimplifiableAutomaton for GBA {
     }
 
     fn with_only_states(self, states: BTreeSet<Self::State>) -> Self {
-        println!("Creating GBA with only states {:?}", states);
+        // println!("Creating GBA with only states {:?}", states);
         let GBA {states: _, delta, initial_state, accepting_transitions} = self;
 
         let delta = delta.into_iter()
@@ -188,13 +188,13 @@ impl SimplifiableAutomaton for GBA {
     }
 
     fn with_states_merged(self, to_merge: Vec<(Self::State, Self::State)>) -> Self {
-        println!("to_merge length: {}", to_merge.len());
-        println!("{:?}", to_merge);
+        // println!("to_merge length: {}", to_merge.len());
+        // println!("{:?}", to_merge);
 
         let GBA {states, delta, initial_state, accepting_transitions} = self;
 
-        println!("States pre-merge: {:?}", states);
-        println!("delta length: {}", delta.len());
+        // println!("States pre-merge: {:?}", states);
+        // println!("delta length: {}", delta.len());
 
         let to_remove = to_merge.iter().map(|(_q1, q2)| q2);
         let to_remove_set = to_remove.clone().map(|e| e.clone()).collect::<BTreeSet<_>>();
@@ -203,10 +203,10 @@ impl SimplifiableAutomaton for GBA {
             .collect::<BTreeMap<_, _>>();
 
         let initial_state = if removed_to_new_mapping.contains_key(&initial_state) {
-            println!("Replacing initial state");
+            // println!("Replacing initial state");
             removed_to_new_mapping[&initial_state].clone()
         } else {
-            println!("Not replacing initial state");
+            // println!("Not replacing initial state");
             initial_state
         };
 
@@ -232,8 +232,8 @@ impl SimplifiableAutomaton for GBA {
             })
             .collect();
 
-        println!("New delta length: {}", delta.len());
-        println!("States post-merge: {:?}", states);
+        // println!("New delta length: {}", delta.len());
+        // println!("States post-merge: {:?}", states);
 
         GBA {states, delta, initial_state, accepting_transitions}
         
@@ -245,9 +245,9 @@ fn merge_states_in_transitions<'a, T: Ord + Eq + Clone + 'a + Debug, U: Eq + Ord
     to_remove: impl Iterator<Item = &'a T>,
     removed_to_new_mapping: &BTreeMap<T, T>
 ) -> BTreeMap<T, BTreeSet<(U, T)>> {
-    println!("transitions length: {}", transitions.len());
+    // println!("transitions length: {}", transitions.len());
     to_remove.fold(transitions, |cdelta, cremove| {
-        println!("removing {:?}", cremove);
+        // println!("removing {:?}", cremove);
         cdelta.with_removed(cremove)
     }).into_iter()
         .map(|(source, targets)| {
@@ -275,11 +275,11 @@ impl SimplifiableAutomaton for BA {
     }
 
     fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
-        println!("Results:");
+        // println!("Results:");
         match self.delta.get(&state) {
             Some(results) => results.iter().map(|(symcon, targets)| {
-                println!("{}", symcon);
-                println!("{:?}", targets);
+                // println!("{}", symcon);
+                // println!("{:?}", targets);
                 targets.clone()
             }).collect(),
             None => BTreeSet::new()
@@ -339,12 +339,12 @@ impl SimplifiableAutomaton for BA {
     }
 
     fn with_states_merged(self, to_merge: Vec<(Self::State, Self::State)>) -> Self {
-        println!("to_merge length: {}", to_merge.len());
-        println!("{:?}", to_merge);
+        // println!("to_merge length: {}", to_merge.len());
+        // println!("{:?}", to_merge);
 
         let BA {delta, initial_state, top_layer: _} = self;
 
-        println!("delta length: {}", delta.len());
+        // println!("delta length: {}", delta.len());
 
         let to_remove = to_merge.iter().map(|(_q1, q2)| q2);
         let removed_to_new_mapping = to_merge.iter()
@@ -352,10 +352,10 @@ impl SimplifiableAutomaton for BA {
             .collect::<BTreeMap<_, _>>();
 
         let initial_state = if removed_to_new_mapping.contains_key(&initial_state) {
-            println!("Replacing initial state");
+            // println!("Replacing initial state");
             removed_to_new_mapping[&initial_state].clone()
         } else {
-            println!("Not replacing initial state");
+            // println!("Not replacing initial state");
             initial_state
         };
 
@@ -369,7 +369,7 @@ impl SimplifiableAutomaton for BA {
             .max()
             .unwrap_or(0);
 
-        println!("New delta length: {}", delta.len());
+        // println!("New delta length: {}", delta.len());
 
         BA {delta, initial_state, top_layer}
         

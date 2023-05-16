@@ -30,12 +30,13 @@ fn main() {
         println!("No stuck states found");
     }
 
-    let graphviz_edges = transition_system.iter()
+    let mut graphviz_edges = transition_system.iter()
         .flat_map(|entry| {
             entry.1.iter().map(move |edge| {
                 format!("\"{}\" -> \"{}\" [label = \"{}\"]", entry.0, edge.1, edge.0)
             })
         }).collect::<Vec<_>>();
+    graphviz_edges.sort();
     let graphviz_edges_str = graphviz_edges.join("\n").replace("▷", "Start").replace("◀", "End");
 
     println!("Transition system edges:");

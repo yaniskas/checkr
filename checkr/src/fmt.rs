@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::ast::{
     AExpr, AOp, Array, BExpr, Command, Commands, Function, Guard, LogicOp, Quantifier, RelOp,
-    Target, Variable, Assignment, SimpleCommand
+    Target, Variable, Assignment, SimpleCommand, SimpleCommands, AtomicStatement, AtomicGuard
 };
 
 impl Display for Variable {
@@ -42,10 +42,11 @@ impl Display for Assignment {
     }
 }
 
-impl Display for SimpleCommand {
+impl Display for AtomicStatement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SimpleCommand::Assignment(a) => a.fmt(f)
+            AtomicStatement::SimpleCommands(cs) => write!(f, "{}", cs.0.iter().format("\n; ")),
+            AtomicStatement::AtomicGuards(gs) => write!(f, "{}", gs.0.iter().format("\n; ")),
         }
     }
 }
@@ -56,7 +57,7 @@ impl Display for Command {
             Command::Assignment(a) => a.fmt(f),
             Command::If(guards) => write!(f, "if {}\nfi", guards.iter().format("\n[] ")),
             Command::Loop(guards) => write!(f, "do {}\nod", guards.iter().format("\n[] ")),
-            Command::Atomic(commands) => write!(f, "ato {}\nota", commands.iter().format("\n; ")),
+            Command::Atomic(statement) => statement.fmt(f),
             Command::EnrichedLoop(pred, guards) => {
                 write!(f, "do {{{pred}}}\n   {}\nod", guards.iter().format("\n[] "))
             }
@@ -68,13 +69,42 @@ impl Display for Command {
     }
 }
 
+impl Display for SimpleCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimpleCommand::Assignment(a) => a.fmt(f)
+        }
+    }
+}
+
 impl Display for Commands {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.iter().format(" ;\n"))
     }
 }
 
+impl Display for SimpleCommands {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.iter().format(" ;\n"))
+    }
+}
+
 impl Display for Guard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ->\n{}",
+            self.0,
+            self.1
+                .to_string()
+                .lines()
+                .map(|l| format!("   {l}"))
+                .format("\n")
+        )
+    }
+}
+
+impl Display for AtomicGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

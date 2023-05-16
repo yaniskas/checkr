@@ -4,7 +4,7 @@ use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::{VWAA, LTLConjunc
 
 fn main() {
     let str = "
-    []({i = 11} -> <> {i = 20})
+    []( ({entry1 = 1} && []!{entry2 = 1}) -> <>{crit1 = 1} )
     ";
 
     // let str = "

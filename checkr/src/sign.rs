@@ -349,7 +349,7 @@ impl MonotoneFramework for SignAnalysis {
                     }
                 })
                 .collect(),
-            Action::Atomic(_) => panic!("Sign analysis for atomics has not been implemented"),
+            Action::Atomic(_) | Action::ConditionalAtomic(_, _) => panic!("Sign analysis for atomics has not been implemented"),
             Action::Skip => prev.clone(),
             Action::Condition(b) => prev
                 .iter()

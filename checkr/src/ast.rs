@@ -149,7 +149,7 @@ pub enum Command {
     Skip,
     If(Vec<Guard>),
     Loop(Vec<Guard>),
-    Atomic(Vec<SimpleCommand>),
+    Atomic(AtomicStatement),
     /// **Extension**
     EnrichedLoop(Predicate, Vec<Guard>),
     /// **Extension**
@@ -159,6 +159,21 @@ pub enum Command {
     /// **Extension**
     Continue,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AtomicStatement {
+    SimpleCommands(SimpleCommands),
+    AtomicGuards(AtomicGuards),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AtomicGuards(pub Vec<AtomicGuard>);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AtomicGuard(pub BExpr, pub SimpleCommands);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SimpleCommands(pub Vec<SimpleCommand>);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimpleCommand {
@@ -252,6 +267,11 @@ impl Commands {
         self.0.iter().flat_map(|c| c.fv()).collect()
     }
 }
+impl SimpleCommands {
+    pub fn fv(&self) -> HashSet<Target> {
+        self.0.iter().flat_map(|c| c.fv()).collect()
+    }
+}
 impl Assignment {
     pub fn fv(&self) -> HashSet<Target> {
         let Assignment(x, a) = self;
@@ -265,6 +285,26 @@ impl SimpleCommand {
         }
     }
 }
+impl AtomicGuard {
+    pub fn fv(&self) -> HashSet<Target> {
+        self.0.fv().union(&self.1.fv()).cloned().collect()
+    }
+}
+impl AtomicGuards {
+    pub fn fv(&self) -> HashSet<Target> {
+        self.0.iter().flat_map(|g| g.fv()).collect()
+    }
+}
+impl AtomicStatement {
+    pub fn fv(&self) -> HashSet<Target> {
+        match self {
+            AtomicStatement::SimpleCommands(commands) => commands.0.iter().fold(HashSet::new(), |acc, e| {
+                acc.add_many(e.fv())
+            }),
+            AtomicStatement::AtomicGuards(guards) => guards.fv(),
+        }
+    }
+}
 impl Command {
     pub fn fv(&self) -> HashSet<Target> {
         match self {
@@ -272,9 +312,7 @@ impl Command {
             Command::Skip => HashSet::default(),
             Command::If(c) => guards_fv(c),
             Command::Loop(c) => guards_fv(c),
-            Command::Atomic(cs) => cs.iter().fold(HashSet::new(), |acc, e| {
-                acc.add_many(e.fv())
-            }),
+            Command::Atomic(statement) => statement.fv(),
             // TODO: Maybe the pred should also be looked at?
             Command::EnrichedLoop(_, c) => guards_fv(c),
             // TODO: Maybe the pred should also be looked at?

@@ -130,7 +130,7 @@ pub fn circle_x(j1: &BTreeSet<VWAATransitionResult>, j2: &BTreeSet<VWAATransitio
     for (alpha1, e1) in j1 {
         for (alpha2, e2) in j2 {
             if *alpha1 == SymbolConjunction::TT && *alpha2 == SymbolConjunction::TT {
-                println!("Inserting {:?}", (alpha1.conjuct(alpha2), e1.conjuct(e2)));
+                // println!("Inserting {:?}", (alpha1.conjuct(alpha2), e1.conjuct(e2)));
             }
             res.insert((alpha1.conjuct(alpha2), e1.conjuct(e2)));
         }
