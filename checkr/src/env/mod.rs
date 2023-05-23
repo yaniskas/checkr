@@ -124,7 +124,7 @@ define_analysis!(
     ),
     Sign(SignEnv, "Sign", "sign"),
     Security(SecurityEnv, "Security", "security"),
-    LTLModelChecking(ModelCheckerEnv, "LTL Model Checking", "ltl_model_checking"),
+    LTLModelChecking(ModelCheckerEnv, "LTL Model Checking", "ltl-model-checking"),
 );
 
 #[typeshare::typeshare]

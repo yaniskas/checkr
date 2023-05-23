@@ -40,6 +40,7 @@ pub enum ModelCheckerOutput {
     FormulaHolds,
     FormulaDoesNotHold(Vec<ParallelConfiguration>),
     SearchDepthExceeded,
+    FormulaMissing,
 }
 
 impl ToMarkdown for ModelCheckerOutput {
@@ -69,7 +70,7 @@ impl ToMarkdown for ModelCheckerOutput {
                         variables.iter().cloned(),
                         arrays.iter().cloned()
                     ));
-        
+
                 for t in configs {
                     table.add_row(chain!(
                         t.nodes.iter().map(ToString::to_string),
@@ -99,9 +100,9 @@ impl ToMarkdown for ModelCheckerOutput {
                 // };
                 // table.add_row([final_message]);
         
-                format!("{table}").into()
-
+                format!("The formula does not hold\n\nViolating trace:\n{table}").into()
             }
+            ModelCheckerOutput::FormulaMissing => Markdown("Please type \"ltl\" followed by an LTL formula after the program".to_string()),
         }
 
     }
@@ -112,7 +113,7 @@ impl Environment for ModelCheckerEnv {
 
     type Output = ModelCheckerOutput;
 
-    const ANALYSIS: Analysis = Analysis::Interpreter;
+    const ANALYSIS: Analysis = Analysis::LTLModelChecking;
 
     fn run(&self, cmds: &Commands, input: &Self::Input) -> Result<Self::Output, EnvError> {
         if cmds.0.len() == 0 {panic!("Not enough information to parse")}
@@ -120,7 +121,7 @@ impl Environment for ModelCheckerEnv {
         let ltl = if let Command::LTL(formula) = &cmds.0[0] {
             formula.clone()
         } else {
-            panic!("No LTL formula found")
+            return Ok(ModelCheckerOutput::FormulaMissing)
         };
 
         let parallel_commands = match &cmds.0[1] {
