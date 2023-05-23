@@ -84,7 +84,9 @@ pub mod test {
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
         match verify(program, ltl) {
-            LTLVerificationResult::CycleFound(_) => {},
+            LTLVerificationResult::CycleFound(c) => {
+                println!("{:#?}", c);
+            },
             _ => panic!(),
         }
     }
@@ -231,6 +233,14 @@ pub mod test {
     }
 
     #[test]
+    fn set_1_next_false() {
+        let program = "
+        n := 1
+        ";
+        verify_not_satisfies(program, "(){n = 2}");
+    }
+
+    #[test]
     fn skip_false() {
         let program = "
         skip
@@ -330,5 +340,31 @@ pub mod test {
         od
         ";
         verify_satisfies(program, "[]({i = 0} -> ()()(){i = 1})");
+    }
+
+    #[test]
+    fn stuck() {
+        let program = "
+        n := 0;
+        do false -> skip od
+        ";
+        verify_satisfies(program, "[]{n = 0}");
+    }
+
+    #[test]
+    fn stuck_false() {
+        let program = "
+        n := 0;
+        do false -> skip od
+        ";
+        verify_not_satisfies(program, "[]{n = 1}");
+    }
+
+    #[test]
+    fn next_past_end() {
+        let program = "
+        n := 1
+        ";
+        verify_satisfies(program, "()(){n = 1}");
     }
 }

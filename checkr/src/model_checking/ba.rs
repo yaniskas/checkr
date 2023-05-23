@@ -3,6 +3,7 @@ use std::{collections::{BTreeSet, BTreeMap}, fmt::Display};
 use super::{vwaa::{SymbolConjunction, LTLConjunction}, gba::{GBA, GBATransition}, traits::{Add, AddMany}};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+// state number, layer
 pub struct BAState(pub usize, pub usize);
 
 impl Display for BAState {
