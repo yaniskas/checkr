@@ -207,7 +207,7 @@ impl Command {
                 edges.push(Edge(s, Action::Condition(b), t));
                 edges
             }
-            Command::Atomic(statement) => statement.edges(s, t),
+            Command::Atomic(statement) => statement.edges(det, s, t),
             Command::Annotated(_, c, _) => c.edges(det, s, t, node_factory),
             Command::Break => todo!(),
             Command::Continue => todo!(),
@@ -216,10 +216,10 @@ impl Command {
 }
 
 impl AtomicStatement {
-    fn edges(&self, s: Node, t: Node) -> Vec<Edge> {
+    fn edges(&self, det: Determinism, s: Node, t: Node) -> Vec<Edge> {
         match self {
             AtomicStatement::SimpleCommands(commands) => commands.edges(s, t),
-            AtomicStatement::AtomicGuards(guards) => guards.edges(s, t),
+            AtomicStatement::AtomicGuards(guards) => guards.edges(det, s, t),
         }
     }
 }
@@ -231,10 +231,38 @@ impl SimpleCommands {
 }
 
 impl AtomicGuards {
-    fn edges(&self, s: Node, t: Node) -> Vec<Edge> {
-        self.0.iter()
-            .map(|AtomicGuard(bexp, commands)| Edge(s, Action::ConditionalAtomic(bexp.clone(), commands.clone()), t))
-            .collect()
+    fn edges(&self, det: Determinism, s: Node, t: Node) -> Vec<Edge> {
+        match det {
+            Determinism::Deterministic => {
+                let mut prev = BExpr::Bool(false);
+    
+                let mut edges = vec![];
+    
+                for AtomicGuard(b, c) in &self.0 {
+                    edges.push(Edge(
+                        s,
+                        Action::ConditionalAtomic(
+                            BExpr::logic(
+                                b.clone(), 
+                                LogicOp::Land, 
+                                BExpr::Not(Box::new(prev.clone()))
+                            ),
+                            c.clone()
+                        ),
+                        t
+                    ));
+
+                    prev = BExpr::logic(b.to_owned().clone(), LogicOp::Lor, prev);
+                }
+    
+                edges
+            }
+            Determinism::NonDeterministic => {
+                self.0.iter()
+                    .map(|AtomicGuard(bexp, commands)| Edge(s, Action::ConditionalAtomic(bexp.clone(), commands.clone()), t))
+                    .collect()
+            }
+        }
     }
 }
 

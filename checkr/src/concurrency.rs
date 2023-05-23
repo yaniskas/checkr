@@ -86,7 +86,7 @@ pub fn next_configurations(ppg: &ParallelProgramGraph, config: &ParallelConfigur
 
 #[cfg(test)]
 mod test {
-    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies, verify_satisfies_name};
+    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies, verify_satisfies_det, verify_not_satisfies_det};
 
     #[test]
     fn flip_flop() {
@@ -340,5 +340,29 @@ mod test {
         ";
 
         verify_satisfies(program, "[](({x = 0} -> ()(){x = 1}) && ({x = 1} -> ()(){x = 0}))");
+    }
+
+    #[test]
+    fn nondet_atomic() {
+        let program = "
+        x := 3;
+        ato x = 3 -> y := 0
+        [] true -> y := 1
+        ota
+        ";
+
+        verify_not_satisfies(program, "[]{y = 0}");
+    }
+
+    #[test]
+    fn det_atomic() {
+        let program = "
+        x := 3;
+        ato x = 3 -> y := 0
+        [] true -> y := 1
+        ota
+        ";
+
+        verify_satisfies_det(program, "[]{y = 0}");
     }
 }

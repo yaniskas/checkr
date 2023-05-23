@@ -8,7 +8,18 @@ fn main() {
         "Please enter a valid program", 
         parse::parse_parallel_commands
     );
-    let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &commands);
+
+    let det_choice = ask_for::<usize>(
+        "Please enter 0 for the program to be non-deterministic, or 1 for it to be deterministic",
+        "Please enter a valid number"
+    );
+
+    let det = match det_choice {
+        0 => Determinism::NonDeterministic,
+        _ => Determinism::Deterministic,
+    };
+
+    let graph = ParallelProgramGraph::new(det, &commands);
 
     let memory = ask_for_memory_assignment(commands);
 
@@ -47,6 +58,7 @@ fn main() {
         + &graphviz_edges_str
         + "}";
     fs::write("graphviz_output/transition_system.dot", graphviz_output).unwrap();
+    println!("Wrote transition system to graphviz_output/transition_system.dot")
 }
 
 fn ask_for<T: FromStr>(msg: &str, failmsg: &str) -> T {

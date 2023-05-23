@@ -53,19 +53,8 @@ pub mod test {
 
     use super::*;
 
-    pub fn verify(program: &str, ltl: &str) -> LTLVerificationResult {
-        let pg = ParallelProgramGraph::new(Determinism::NonDeterministic, &parse_parallel_commands(program).unwrap());
-        verify_ltl(
-            &pg,
-            parse_ltl(ltl).unwrap(),
-            &zero_initialized_memory(&pg, 10),
-            100
-        )
-    }
-
-    pub fn verify_name(program: &str, ltl: &str, name: &str) -> LTLVerificationResult {
-        let pg = ParallelProgramGraph::new(Determinism::NonDeterministic, &parse_parallel_commands(program).unwrap());
-        fs::write(format!("{}.dot", name), pg.dot()).unwrap();
+    fn verify(program: &str, ltl: &str, det: Determinism) -> LTLVerificationResult {
+        let pg = ParallelProgramGraph::new(det, &parse_parallel_commands(program).unwrap());
         verify_ltl(
             &pg,
             parse_ltl(ltl).unwrap(),
@@ -75,15 +64,24 @@ pub mod test {
     }
 
     pub fn verify_satisfies(program: &str, ltl: &str) {
-        assert_eq!(verify(program, ltl), LTLVerificationResult::CycleNotFound)
+        assert_eq!(verify(program, ltl, Determinism::NonDeterministic), LTLVerificationResult::CycleNotFound)
     }
 
-    pub fn verify_satisfies_name(program: &str, ltl: &str, name: &str) {
-        assert_eq!(verify_name(program, ltl, name), LTLVerificationResult::CycleNotFound)
+    pub fn verify_satisfies_det(program: &str, ltl: &str) {
+        assert_eq!(verify(program, ltl, Determinism::Deterministic), LTLVerificationResult::CycleNotFound)
     }
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
-        match verify(program, ltl) {
+        match verify(program, ltl, Determinism::NonDeterministic) {
+            LTLVerificationResult::CycleFound(c) => {
+                println!("{:#?}", c);
+            },
+            _ => panic!(),
+        }
+    }
+
+    pub fn verify_not_satisfies_det(program: &str, ltl: &str) {
+        match verify(program, ltl, Determinism::Deterministic) {
             LTLVerificationResult::CycleFound(c) => {
                 println!("{:#?}", c);
             },

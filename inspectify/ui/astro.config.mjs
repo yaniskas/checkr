@@ -15,7 +15,7 @@ import compress from "astro-compress";
 
 const commitHash =
   process.env.GITHUB_REF_NAME ??
-  execSync("git describe --dirty").toString().trimEnd();
+  execSync("git describe --dirty --always").toString().trimEnd();
 process.env.INSPECTIFY_VERSION = commitHash;
 
 // https://astro.build/config
