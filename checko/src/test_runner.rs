@@ -220,6 +220,7 @@ impl GroupResults<'_> {
                 Analysis::ProgramVerification => results.push(&env::ProgramVerificationEnv).await,
                 Analysis::Sign => results.push(&env::SignEnv).await,
                 Analysis::Security => results.push(&env::SecurityEnv).await,
+                Analysis::LTLModelChecking => {}
             }
         }
 

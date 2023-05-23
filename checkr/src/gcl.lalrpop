@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use crate::ast::*;
 use crate::security::{Flow, SecurityClass};
+use crate::model_checking::ltl_ast::LTL;
 
 grammar;
 
@@ -28,12 +29,27 @@ SepNonEmpty<T, S>: Vec<T> = {
     }
 };
 
-pub ParallelCommands: ParallelCommands = {
-    <Commands> => ParallelCommands(vec! [<>]),
-    "par" <Sep<Commands, "[]">> "rap" => ParallelCommands(<>),
+pub TopLevel: Commands = {
+    <cmds: PossiblyParallelCommands> <ltl: LTLSpec?> => {
+        match ltl {
+            Some(ltl) => {
+                let mut res = vec![Command::LTL(ltl)];
+                res.extend(cmds.0);
+                Commands(res)
+            }
+            None => cmds,
+        }
+    },
 }
 
-pub Commands: Commands = SepNonEmpty<Command, ";"> => Commands(<>);
+LTLSpec: LTL = "ltl" <LTL>;
+
+PossiblyParallelCommands: Commands = {
+    Commands,
+    "par" <Sep<Commands, "[]">> "rap" => Commands(vec![Command::Parallel(ParallelCommands(<>))]),
+}
+
+Commands: Commands = SepNonEmpty<Command, ";"> => Commands(<>);
 
 Command: Command = {
     AnnotatedCommand,
@@ -242,3 +258,53 @@ LTarget: Target<Box<AExpr>> = {
 LVariable: Variable = LogicalVar => Variable(<>);
 #[inline]
 LArray: Array = LogicalVar => Array(<>);
+
+// LTL
+pub LTL: LTL = {
+    IffLTL,
+}
+
+IffLTL: LTL = {
+    <l: IffLTL> "<->" <r: ImpliesLTL> => LTL::Iff(Box::new(l), Box::new(r)),
+    ImpliesLTL,
+}
+
+ImpliesLTL: LTL = {
+    <l: ImpliesLTL> "->" <r: OrLTL> => LTL::Implies(Box::new(l), Box::new(r)),
+    OrLTL,
+}
+
+OrLTL: LTL = {
+    <l: OrLTL> "||" <r: XorLTL> => LTL::Or(Box::new(l), Box::new(r)),
+    XorLTL,
+}
+
+XorLTL: LTL = {
+    <l: XorLTL> "^^" <r: AndLTL> => LTL::Xor(Box::new(l), Box::new(r)),
+    AndLTL,
+}
+
+AndLTL: LTL = {
+    <l: AndLTL> "&&" <r: UntilLTL> => LTL::And(Box::new(l), Box::new(r)),
+    UntilLTL,
+}
+
+UntilLTL: LTL = {
+    <l: UnaryLTL> "U" <r: UntilLTL> => LTL::Until(Box::new(l), Box::new(r)),
+    UnaryLTL,
+}
+
+UnaryLTL: LTL = {
+    "!" <UnaryLTL> => LTL::Not(Box::new(<>)),
+    "()" <UnaryLTL> => LTL::Next(Box::new(<>)),
+    "<>" <UnaryLTL> => LTL::Eventually(Box::new(<>)),
+    "[]" <UnaryLTL> => LTL::Forever(Box::new(<>)),
+    AtomicLTL,
+}
+
+AtomicLTL: LTL = {
+    "true" => LTL::True,
+    "false" => LTL::False,
+    "{" <BExpr_> "}" => LTL::Atomic(<>),
+    "(" <LTL> ")",
+}

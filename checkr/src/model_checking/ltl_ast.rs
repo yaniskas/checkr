@@ -1,8 +1,9 @@
 use std::{collections::BTreeSet, rc::Rc, fmt::Display};
 
-use crate::{ast::BExpr, parse::ParseError, model_checking::traits::Add};
+use crate::{ast::BExpr, parse::ParseError, model_checking::traits::Add, gcl};
+use once_cell::sync::Lazy;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LTL {
     True,
     False,
@@ -250,13 +251,8 @@ impl Display for NegativeNormalLTL {
     }
 }
 
-use lalrpop_util::{lalrpop_mod};
-use once_cell::sync::Lazy;
-
-lalrpop_mod!(pub ltl, "/model_checking/ltl.rs");
-
 pub fn parse_ltl(src: &str) -> Result<LTL, ParseError> {
-    static PARSER: Lazy<ltl::LTLParser> = Lazy::new(ltl::LTLParser::new);
+    static PARSER: Lazy<gcl::LTLParser> = Lazy::new(gcl::LTLParser::new);
 
     PARSER.parse(src).map_err(|e| ParseError::new(src, e))
 }

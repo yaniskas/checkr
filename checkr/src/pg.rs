@@ -211,6 +211,8 @@ impl Command {
             Command::Annotated(_, c, _) => c.edges(det, s, t, node_factory),
             Command::Break => todo!(),
             Command::Continue => todo!(),
+            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }
 }

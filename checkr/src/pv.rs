@@ -75,6 +75,8 @@ impl Command {
             Command::Annotated(_, _, q) => q.clone(),
             Command::Break => todo!(),
             Command::Continue => todo!(),
+            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }
     pub fn vc(&self, r: &BExpr) -> Vec<BExpr> {
@@ -104,6 +106,8 @@ impl Command {
             }
             Command::Break => todo!(),
             Command::Continue => todo!(),
+            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }
 }

@@ -3,7 +3,7 @@ use std::{collections::HashSet, str::FromStr};
 use itertools::Either;
 use serde::{Deserialize, Serialize};
 
-use crate::model_checking::traits::AddMany;
+use crate::model_checking::{traits::AddMany, ltl_ast::LTL};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Target<Idx = ()> {
@@ -150,6 +150,8 @@ pub enum Command {
     If(Vec<Guard>),
     Loop(Vec<Guard>),
     Atomic(AtomicStatement),
+    Parallel(ParallelCommands),
+    LTL(LTL),
     /// **Extension**
     EnrichedLoop(Predicate, Vec<Guard>),
     /// **Extension**
@@ -319,6 +321,8 @@ impl Command {
             Command::Annotated(_, c, _) => c.fv(),
             Command::Break => HashSet::default(),
             Command::Continue => HashSet::default(),
+            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }
 }

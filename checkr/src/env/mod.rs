@@ -11,6 +11,7 @@ pub use parse::ParseEnv;
 pub use pv::ProgramVerificationEnv;
 pub use security::SecurityEnv;
 pub use sign::SignEnv;
+pub use ltl_model_checker::ModelCheckerEnv;
 
 pub mod graph;
 pub mod interpreter;
@@ -18,6 +19,7 @@ pub mod parse;
 pub mod pv;
 pub mod security;
 pub mod sign;
+pub mod ltl_model_checker;
 
 macro_rules! define_analysis {
     ( $( $name:ident($env:path, $display:literal, $cmd:literal) ),* $(,)? ) => {
@@ -108,6 +110,7 @@ pub enum Analysis {
     ProgramVerification,
     Sign,
     Security,
+    LTLModelChecking,
 }
 
 define_analysis!(
@@ -121,6 +124,7 @@ define_analysis!(
     ),
     Sign(SignEnv, "Sign", "sign"),
     Security(SecurityEnv, "Security", "security"),
+    LTLModelChecking(ModelCheckerEnv, "LTL Model Checking", "ltl_model_checking"),
 );
 
 #[typeshare::typeshare]

@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 use crate::{
-    ast::{BExpr, Commands, Predicate, ParallelCommands},
+    ast::{BExpr, Commands, Predicate, ParallelCommands, Command},
     gcl,
 };
 
@@ -66,13 +66,22 @@ impl From<(usize, usize)> for SourceSpan {
 }
 
 pub fn parse_parallel_commands(src: &str) -> Result<ParallelCommands, ParseError> {
-    static PARSER: Lazy<gcl::ParallelCommandsParser> = Lazy::new(gcl::ParallelCommandsParser::new);
+    static PARSER: Lazy<gcl::TopLevelParser> = Lazy::new(gcl::TopLevelParser::new);
 
-    PARSER.parse(src).map_err(|e| ParseError::new(src, e))
+    let mut parsed = PARSER.parse(src).map_err(|e| ParseError::new(src, e))?;
+
+    match &parsed.0[0] {
+        Command::Parallel(_) => {
+            if let Command::Parallel(parallel_commands) = parsed.0.remove(0) {
+                Ok(parallel_commands)
+            } else {panic!()}
+        }
+        _ => Ok(ParallelCommands(vec![parsed])),
+    }
 }
 
 pub fn parse_commands(src: &str) -> Result<Commands, ParseError> {
-    static PARSER: Lazy<gcl::CommandsParser> = Lazy::new(gcl::CommandsParser::new);
+    static PARSER: Lazy<gcl::TopLevelParser> = Lazy::new(gcl::TopLevelParser::new);
 
     PARSER.parse(src).map_err(|e| ParseError::new(src, e))
 }
