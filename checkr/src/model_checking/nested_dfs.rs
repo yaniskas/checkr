@@ -78,7 +78,7 @@ impl <'a> ProductTransitionSystem<'a> {
                 condition.semantics(initial_memory) == Ok(true)
             })
             .map(|(_action, bastate)| {
-                (ParallelConfiguration {nodes: Vec::<Node>::repeat(&Node::Start, self.program_graph.0.len()), memory: initial_memory.clone()}, TrappingBAState::NormalState(bastate.clone()))
+                (ParallelConfiguration {nodes: self.program_graph.initial_nodes(), memory: initial_memory.clone()}, TrappingBAState::NormalState(bastate.clone()))
             })
     }
 

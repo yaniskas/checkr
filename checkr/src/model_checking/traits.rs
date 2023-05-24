@@ -92,6 +92,17 @@ impl <K: Ord, V> AddMany for BTreeMap<K, V> {
     }
 }
 
+impl <K: Eq + Hash, V> AddMany for HashMap<K, V> {
+    type Item = (K, V);
+
+    fn add_many(mut self, items: impl IntoIterator<Item = Self::Item>) -> Self {
+        for (k, v) in items {
+            self.insert(k, v);
+        }
+        self
+    }
+}
+
 pub trait Singleton {
     type Item;
     fn singleton(item: Self::Item) -> Self;

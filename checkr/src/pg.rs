@@ -6,13 +6,13 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand, AtomicStatement, SimpleCommands, AtomicGuard, AtomicGuards}, model_checking::traits::AddMany};
+use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand, AtomicStatement, SimpleCommands, AtomicGuard, AtomicGuards}, model_checking::traits::AddMany, concurrency::ParallelProgramGraph};
 
 #[derive(Debug, Clone)]
 pub struct ProgramGraph {
-    edges: Vec<Edge>,
-    nodes: HashSet<Node>,
-    outgoing: HashMap<Node, Vec<Edge>>,
+    pub edges: Vec<Edge>,
+    pub nodes: HashSet<Node>,
+    pub outgoing: HashMap<Node, Vec<Edge>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -30,6 +30,23 @@ pub enum Node {
     Start,
     Node(NodeId),
     End,
+    // Needed so the interface does not have to handle regular program graphs and parallel program graphs separately
+    ParallelStart(u64),
+    ParallelNode(u64, NodeId),
+    ParallelEnd(u64)
+}
+
+impl Node {
+    pub fn to_parallel(&self, process_num: u64) -> Node {
+        match self {
+            Node::Start => Node::ParallelStart(process_num),
+            Node::Node(n) => Node::ParallelNode(process_num, n.clone()),
+            Node::End => Node::ParallelEnd(process_num),
+            Node::ParallelStart(_)
+            | Node::ParallelNode(_, _)
+            | Node::ParallelEnd(_) => panic!("Node is already parallel")
+        }
+    }
 }
 
 impl std::fmt::Debug for Node {
@@ -38,6 +55,9 @@ impl std::fmt::Debug for Node {
             Node::Start => write!(f, "qStart"),
             Node::Node(n) => write!(f, "q{}", n.0),
             Node::End => write!(f, "qFinal"),
+            Node::ParallelStart(i) => write!(f, "qStart_{i}"),
+            Node::ParallelNode(i, n) => write!(f, "q{}_{}", n.0, i),
+            Node::ParallelEnd(i) => write!(f, "qFinal_{i}"),
         }
     }
 }
@@ -49,24 +69,16 @@ impl std::fmt::Display for Node {
                 f,
                 "q{}",
                 n.0,
-                // n.0.to_string()
-                //     .chars()
-                //     .map(|c| match c {
-                //         '0' => '₀',
-                //         '1' => '₁',
-                //         '2' => '₂',
-                //         '3' => '₃',
-                //         '4' => '₄',
-                //         '5' => '₅',
-                //         '6' => '₆',
-                //         '7' => '₇',
-                //         '8' => '₈',
-                //         '9' => '₉',
-                //         c => c,
-                //     })
-                //     .format("")
             ),
             Node::End => write!(f, "q◀"),
+            Node::ParallelStart(i) => write!(f, "q▷ {i}"),
+            Node::ParallelNode(i, n) => write!(
+                f,
+                "q{} {}",
+                n.0,
+                i
+            ),
+            Node::ParallelEnd(i) => write!(f, "q◀ {i}"),
         }
     }
 }
@@ -120,6 +132,15 @@ impl Edge {
     }
     pub fn to(&self) -> Node {
         self.2
+    }
+
+    pub fn to_parallel(&self, process_num: u64) -> Edge {
+        let Edge(s, a, t) = self;
+        Edge(
+            s.to_parallel(process_num),
+            a.clone(),
+            t.to_parallel(process_num)
+        )
     }
 }
 
@@ -278,23 +299,41 @@ fn done(guards: &[Guard]) -> BExpr {
 
 impl ProgramGraph {
     pub fn new(det: Determinism, cmds: &Commands) -> Self {
-        let mut node_factory = NodeFactory::new();
-        let edges = cmds.edges(det, Node::Start, Node::End, &mut node_factory);
-        let mut outgoing: HashMap<Node, Vec<Edge>> = HashMap::new();
-        let mut nodes: HashSet<Node> = Default::default();
-
-        for e in &edges {
-            outgoing.entry(e.0).or_default().push(e.clone());
-            nodes.insert(e.0);
-            nodes.insert(e.2);
+        match &cmds.0[0] {
+            Command::LTL(_) => ProgramGraph::new(det, &Commands(cmds.0[1..].iter().map(Clone::clone).collect())),
+            Command::Parallel(pcmds) => {
+                let ppg = ParallelProgramGraph::new(det, pcmds);
+                let (edges, nodes, outgoing) = ppg.0.into_iter()
+                    .fold((Vec::new(), HashSet::new(), HashMap::new()), |(acc_edges, acc_nodes, acc_outgoing), pg| {
+                        (
+                            acc_edges.add_many(pg.edges),
+                            acc_nodes.add_many(pg.nodes),
+                            acc_outgoing.add_many(pg.outgoing)
+                        )
+                    });
+                ProgramGraph {edges, nodes, outgoing}
+            },
+            _ => {
+                let mut node_factory = NodeFactory::new();
+                let edges = cmds.edges(det, Node::Start, Node::End, &mut node_factory);
+                let mut outgoing: HashMap<Node, Vec<Edge>> = HashMap::new();
+                let mut nodes: HashSet<Node> = Default::default();
+        
+                for e in &edges {
+                    outgoing.entry(e.0).or_default().push(e.clone());
+                    nodes.insert(e.0);
+                    nodes.insert(e.2);
+                }
+        
+                Self {
+                    outgoing,
+                    edges,
+                    nodes,
+                }
+                .rename_with_reverse_post_order()
+            }
         }
 
-        Self {
-            outgoing,
-            edges,
-            nodes,
-        }
-        .rename_with_reverse_post_order()
     }
     pub fn edges(&self) -> &[Edge] {
         &self.edges
@@ -398,6 +437,9 @@ impl ProgramGraph {
                         node_mapping_new.insert(*n, Node::End);
                         NamingStage::Middle { idx }
                     }
+                    Node::ParallelStart(_)
+                    | Node::ParallelNode(_, _)
+                    | Node::ParallelEnd(_) => panic!("Parallel nodes should not appear at this stage")
                 },
             }
         }

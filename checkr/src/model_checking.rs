@@ -27,7 +27,7 @@ pub fn check_model(
     pg: &ParallelProgramGraph,
 ) -> CheckedModel {
     let initial_configuration = ParallelConfiguration {
-        nodes: Vec::repeat(&Node::Start, pg.0.len()),
+        nodes: pg.initial_nodes(),
         memory
     };
 

@@ -2,7 +2,7 @@ use std::fmt::Display;
 use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 
-use crate::{pg::{ProgramGraph, Action, Determinism, Node}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::ModelCheckMemory};
+use crate::{pg::{ProgramGraph, Action, Determinism, Node, Edge}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::ModelCheckMemory};
 
 #[derive(Debug, Clone)]
 pub struct ParallelProgramGraph(pub Vec<ProgramGraph>);
@@ -25,11 +25,33 @@ impl ParallelProgramGraph {
                 .format("  \n")
         )
     }
-}
 
-impl ParallelProgramGraph {
+    pub fn num_processes(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn initial_nodes(&self) -> Vec<Node> {
+        (0..self.num_processes()).into_iter().map(|i| Node::ParallelStart(i as u64)).collect()
+    }
+
     pub fn new(det: Determinism, pcmds: &ParallelCommands) -> ParallelProgramGraph {
-        ParallelProgramGraph(pcmds.0.iter().map(|e| ProgramGraph::new(det, e)).collect())
+        let graphs = pcmds.0.iter()
+            .enumerate()
+            .map(|(i, e)| {
+                let i = i as u64;
+                let ProgramGraph {edges, nodes, outgoing} = ProgramGraph::new(det, e);
+
+                let edges = edges.into_iter().map(|e| e.to_parallel(i)).collect();
+                let nodes = nodes.into_iter().map(|n| n.to_parallel(i)).collect();
+                let outgoing = outgoing.into_iter().map(|(node, edges)| {
+                    (node.to_parallel(i), edges.into_iter().map(|e| e.to_parallel(i)).collect())
+                }).collect();
+
+                ProgramGraph {edges, nodes, outgoing}
+            })
+            .collect();
+
+        ParallelProgramGraph(graphs)
     }
 }
 

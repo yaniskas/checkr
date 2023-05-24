@@ -32,8 +32,8 @@ fn main() {
         LTLVerificationResult::CycleFound(cyc) => {
             println!("Formula not satisfied");
             println!("Violating trace:");
-            for (config, _) in cyc {
-                println!("{}", config);
+            for (action, config) in cyc {
+                println!("{} {:?}", action, config);
             }
         }
         LTLVerificationResult::SearchDepthExceeded => {
