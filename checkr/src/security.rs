@@ -88,7 +88,7 @@ impl Command {
             Command::Annotated(_, c, _) => c.sec(implicit),
             Command::Break => HashSet::default(),
             Command::Continue => HashSet::default(),
-            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::ModelCheckingArgs(_) => panic!("Model checking arguments should not be encountered at this stage"),
             Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }

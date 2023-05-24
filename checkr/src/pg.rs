@@ -232,7 +232,7 @@ impl Command {
             Command::Annotated(_, c, _) => c.edges(det, s, t, node_factory),
             Command::Break => todo!(),
             Command::Continue => todo!(),
-            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::ModelCheckingArgs(_) => panic!("Model checking arguments should not be encountered at this stage"),
             Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }
@@ -300,19 +300,10 @@ fn done(guards: &[Guard]) -> BExpr {
 impl ProgramGraph {
     pub fn new(det: Determinism, cmds: &Commands) -> Self {
         match &cmds.0[0] {
-            Command::LTL(_) => ProgramGraph::new(det, &Commands(cmds.0[1..].iter().map(Clone::clone).collect())),
+            Command::ModelCheckingArgs(_) => ProgramGraph::new(det, &Commands(cmds.0[1..].iter().map(Clone::clone).collect())),
             Command::Parallel(pcmds) => {
-                let ppg = ParallelProgramGraph::new(det, pcmds);
-                let (edges, nodes, outgoing) = ppg.0.into_iter()
-                    .fold((Vec::new(), HashSet::new(), HashMap::new()), |(acc_edges, acc_nodes, acc_outgoing), pg| {
-                        (
-                            acc_edges.add_many(pg.edges),
-                            acc_nodes.add_many(pg.nodes),
-                            acc_outgoing.add_many(pg.outgoing)
-                        )
-                    });
-                ProgramGraph {edges, nodes, outgoing}
-            },
+                ParallelProgramGraph::new(det, pcmds).to_pg()
+            }
             _ => {
                 let mut node_factory = NodeFactory::new();
                 let edges = cmds.edges(det, Node::Start, Node::End, &mut node_factory);

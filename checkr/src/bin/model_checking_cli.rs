@@ -10,7 +10,7 @@ fn main() {
     );
 
     let det_choice = ask_for::<usize>(
-        "Please enter 0 for the program to be non-deterministic, or 1 for it to be deterministic",
+        "Please enter 0 for the program to be non-deterministic, or 1 for it to be deterministic: ",
         "Please enter a valid number"
     );
 
@@ -20,6 +20,10 @@ fn main() {
     };
 
     let graph = ParallelProgramGraph::new(det, &commands);
+
+    let pg_dot = graph.clone().to_pg().dot();
+    fs::write("graphviz_output/program_graph.dot", pg_dot).unwrap();
+    println!("Wrote program graph to graphviz_output/program_graph.dot");
 
     let memory = ask_for_memory_assignment(commands);
 

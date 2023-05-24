@@ -1,29 +1,23 @@
-use std::fmt::Display;
+use std::{fmt::Display, collections::{HashSet, HashMap}};
 use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 
-use crate::{pg::{ProgramGraph, Action, Determinism, Node, Edge}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::ModelCheckMemory};
+use crate::{pg::{ProgramGraph, Action, Determinism, Node, Edge}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::{ModelCheckMemory, traits::AddMany}};
 
 #[derive(Debug, Clone)]
 pub struct ParallelProgramGraph(pub Vec<ProgramGraph>);
 
 impl ParallelProgramGraph {
-    pub fn dot(&self) -> String {
-        format!(
-            "digraph G {{\n{}\n}}",
-            self.0.iter().enumerate().flat_map(|(i, pg)| pg.edges().iter().map(move |edges| (i, edges)))
-            .map(|(i, e)| format!(
-                    "  {:?}[label=\"{}\"]; {:?} -> {:?}[label={:?}]; {:?}[label=\"{}\"];",
-                    format!("{}, {}", i, e.0),
-                    format!("{}, {}", i, e.0),
-                    format!("{}, {}", i, e.0),
-                    format!("{}, {}", i, e.2),
-                    e.1.to_string(),
-                    format!("{}, {}", i, e.2),
-                    format!("{}, {}", i, e.1),
-                ))
-                .format("  \n")
-        )
+    pub fn to_pg(self) -> ProgramGraph {
+        let (edges, nodes, outgoing) = self.0.into_iter()
+            .fold((Vec::new(), HashSet::new(), HashMap::new()), |(acc_edges, acc_nodes, acc_outgoing), pg| {
+                (
+                    acc_edges.add_many(pg.edges),
+                    acc_nodes.add_many(pg.nodes),
+                    acc_outgoing.add_many(pg.outgoing)
+                )
+            });
+        ProgramGraph {edges, nodes, outgoing}
     }
 
     pub fn num_processes(&self) -> usize {

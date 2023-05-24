@@ -65,7 +65,7 @@ impl Display for Command {
             Command::Break => write!(f, "break"),
             Command::Continue => write!(f, "continue"),
             Command::Skip => write!(f, "skip"),
-            Command::LTL(_) => panic!("LTL command type should not be encountered at this stage"),
+            Command::ModelCheckingArgs(_) => panic!("Model checking arguments should not be encountered at this stage"),
             Command::Parallel(_) => panic!("Parallel command type should not be encountered at this stage"),
         }
     }

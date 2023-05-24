@@ -3,7 +3,7 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{Commands, Command, ParallelCommands},
+    ast::{Commands, Command, ParallelCommands, ModelCheckingArgs, FullAssignment},
     generation::Generate,
     interpreter::{Configuration, Interpreter, InterpreterMemory, TerminationState},
     pg::{Determinism, Node, ProgramGraph},
@@ -41,6 +41,7 @@ pub enum ModelCheckerOutput {
     FormulaDoesNotHold(Vec<ParallelConfiguration>),
     SearchDepthExceeded,
     FormulaMissing,
+    InvalidSearchDepth,
 }
 
 impl ToMarkdown for ModelCheckerOutput {
@@ -103,6 +104,7 @@ impl ToMarkdown for ModelCheckerOutput {
                 format!("The formula does not hold\n\nViolating trace:\n{table}").into()
             }
             ModelCheckerOutput::FormulaMissing => Markdown("Please type \"ltl\" followed by an LTL formula after the program".to_string()),
+            ModelCheckerOutput::InvalidSearchDepth => Markdown("Please input a search depth greater than 0".to_string()),
         }
 
     }
@@ -118,8 +120,8 @@ impl Environment for ModelCheckerEnv {
     fn run(&self, cmds: &Commands, input: &Self::Input) -> Result<Self::Output, EnvError> {
         if cmds.0.len() == 0 {panic!("Not enough information to parse")}
 
-        let ltl = if let Command::LTL(formula) = &cmds.0[0] {
-            formula.clone()
+        let args = if let Command::ModelCheckingArgs(args) = &cmds.0[0] {
+            args.clone()
         } else {
             return Ok(ModelCheckerOutput::FormulaMissing)
         };
@@ -128,12 +130,33 @@ impl Environment for ModelCheckerEnv {
             Command::Parallel(res) => res.clone(),
             _ => ParallelCommands(vec![Commands((&cmds.0[1..]).iter().map(Clone::clone).collect())]),
         };
-
+        
+        let ModelCheckingArgs{initial_assignment, ltl, search_depth} = args;
+        
         let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &parallel_commands);
+        
+        let mut memory = zero_initialized_memory(&graph, 10);
 
-        let memory = zero_initialized_memory(&graph, 10);
+        if let Some(initial_assignment) = initial_assignment {
+            for assignment in initial_assignment {
+                match assignment {
+                    FullAssignment::VariableAssignment(name, value) => {
+                        memory.variables.insert(name, value);
+                    }
+                    FullAssignment::ArrayAssignment(name, value) => {
+                        memory.arrays.insert(name, value);
+                    }
+                }
+            }
+        }
 
-        let res = verify_ltl(&graph, ltl, &memory, 100);
+        let search_depth = match search_depth {
+            Some(val) if val > 0 => val as usize,
+            None => 100,
+            _ => return Ok(ModelCheckerOutput::InvalidSearchDepth),
+        };
+
+        let res = verify_ltl(&graph, ltl, &memory, search_depth);
 
         match res {
             LTLVerificationResult::CycleFound(trace) => {

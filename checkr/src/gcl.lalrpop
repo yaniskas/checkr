@@ -30,10 +30,10 @@ SepNonEmpty<T, S>: Vec<T> = {
 };
 
 pub TopLevel: Commands = {
-    <cmds: PossiblyParallelCommands> <ltl: LTLSpec?> => {
-        match ltl {
-            Some(ltl) => {
-                let mut res = vec![Command::LTL(ltl)];
+    <cmds: PossiblyParallelCommands> <args: ModelCheckingArgs?> => {
+        match args {
+            Some(args) => {
+                let mut res = vec![Command::ModelCheckingArgs(args)];
                 res.extend(cmds.0);
                 Commands(res)
             }
@@ -42,7 +42,28 @@ pub TopLevel: Commands = {
     },
 }
 
+ModelCheckingArgs: ModelCheckingArgs = {
+    <mem: PossibleMemoryAssignment> <ltl: LTLSpec> <depth: PossibleDepth> => {
+        ModelCheckingArgs {
+            initial_assignment: mem,
+            ltl: ltl,
+            search_depth: depth
+        }
+    }
+}
+
+PossibleMemoryAssignment: Option<Vec<FullAssignment>> = ("initial" <MemoryAssignment>)?;
+
 LTLSpec: LTL = "ltl" <LTL>;
+
+PossibleDepth: Option<Int> = ("depth" <Int>)?;
+
+MemoryAssignment: Vec<FullAssignment> = SepNonEmpty<FullAssignment, ",">;
+
+FullAssignment: FullAssignment = {
+    <Variable> "=" <Int> => FullAssignment::VariableAssignment(<>),
+    <Array> "=" "[" <Sep<Int, ",">> "]" => FullAssignment::ArrayAssignment(<>)
+}
 
 PossiblyParallelCommands: Commands = {
     Commands,
