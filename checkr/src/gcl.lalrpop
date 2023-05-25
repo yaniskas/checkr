@@ -43,9 +43,10 @@ pub TopLevel: Commands = {
 }
 
 ModelCheckingArgs: ModelCheckingArgs = {
-    <mem: PossibleMemoryAssignment> <ltl: LTLSpec> <depth: PossibleDepth> => {
+    <mem: PossibleMemoryAssignment> <det: PossibleDeterminismChoice> <ltl: LTLSpec> <depth: PossibleDepth> => {
         ModelCheckingArgs {
             initial_assignment: mem,
+            determinism: det,
             ltl: ltl,
             search_depth: depth
         }
@@ -53,6 +54,13 @@ ModelCheckingArgs: ModelCheckingArgs = {
 }
 
 PossibleMemoryAssignment: Option<Vec<FullAssignment>> = ("initial" <MemoryAssignment>)?;
+
+PossibleDeterminismChoice: Option<bool> = ("determinism" <Bool>)?;
+
+Bool: bool = {
+    "true" => true,
+    "false" => false
+}
 
 LTLSpec: LTL = "ltl" <LTL>;
 

@@ -131,9 +131,11 @@ impl Environment for ModelCheckerEnv {
             _ => ParallelCommands(vec![Commands((&cmds.0[1..]).iter().map(Clone::clone).collect())]),
         };
         
-        let ModelCheckingArgs{initial_assignment, ltl, search_depth} = args;
+        let ModelCheckingArgs{initial_assignment, determinism, ltl, search_depth} = args;
+
+        let determinism = if determinism == Some(true) {Determinism::Deterministic} else {Determinism::NonDeterministic};
         
-        let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &parallel_commands);
+        let graph = ParallelProgramGraph::new(determinism, &parallel_commands);
         
         let mut memory = zero_initialized_memory(&graph, 10);
 

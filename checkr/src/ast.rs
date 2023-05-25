@@ -165,6 +165,7 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModelCheckingArgs {
     pub initial_assignment: Option<Vec<FullAssignment>>,
+    pub determinism: Option<bool>,
     pub ltl: LTL,
     pub search_depth: Option<Int>,
 }
