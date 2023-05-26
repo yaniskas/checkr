@@ -20,6 +20,24 @@ impl ParallelProgramGraph {
         ProgramGraph {edges, nodes, outgoing}
     }
 
+    pub fn dot(&self) -> String {
+        if self.num_processes() == 1 {
+            let non_parallel_nodes = self.0[0].nodes.iter().map(Node::to_non_parallel).collect();
+            let non_parallel_edges = self.0[0].edges.iter().map(Edge::to_non_parallel).collect();
+            let non_parallel_outgoing = self.0[0].outgoing.iter()
+                .map(|(n, edges)| (n.to_non_parallel(), edges.iter().map(Edge::to_non_parallel).collect()))
+                .collect();
+
+            ProgramGraph {
+                nodes: non_parallel_nodes,
+                edges: non_parallel_edges,
+                outgoing: non_parallel_outgoing
+            }.dot()
+        } else {
+            self.clone().to_pg().dot()
+        }
+    }
+
     pub fn num_processes(&self) -> usize {
         self.0.len()
     }
@@ -53,6 +71,15 @@ impl ParallelProgramGraph {
 pub struct ParallelConfiguration<N = Node> {
     pub nodes: Vec<N>,
     pub memory: ModelCheckMemory,
+}
+
+impl ParallelConfiguration<Node> {
+    pub fn make_node_non_parallel(self) -> ParallelConfiguration {
+        ParallelConfiguration {
+            nodes: vec![self.nodes[0].to_non_parallel()],
+            memory: self.memory
+        }
+    }
 }
 
 impl Display for ParallelConfiguration {

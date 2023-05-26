@@ -21,7 +21,7 @@ fn main() {
 
     let graph = ParallelProgramGraph::new(det, &commands);
 
-    let pg_dot = graph.clone().to_pg().dot();
+    let pg_dot = graph.dot();
     fs::write("graphviz_output/program_graph.dot", pg_dot).unwrap();
     println!("Wrote program graph to graphviz_output/program_graph.dot");
 
@@ -34,8 +34,17 @@ fn main() {
 
     let result = check_model(search_depth, memory, &graph);
     let stuck_states = result.stuck_states;
-    let transition_system = result.transition_system;
-
+    let transition_system = if graph.num_processes() == 1 {
+        result.transition_system.into_iter()
+            .map(|(config, outgoing)| {
+                (
+                    config.make_node_non_parallel(),
+                    outgoing.into_iter().map(|(action, target)| (action, target.make_node_non_parallel())).collect()
+                )
+            })
+            .collect()
+    } else {result.transition_system};
+    
     if !stuck_states.is_empty() {
         println!("Stuck states:");
         for pt in stuck_states {

@@ -8,7 +8,18 @@ fn main() {
         "Please enter a valid program", 
         parse::parse_parallel_commands
     );
-    let graph = ParallelProgramGraph::new(Determinism::NonDeterministic, &commands);
+
+    let det_choice = ask_for::<usize>(
+        "Please enter 0 for the program to be non-deterministic, or 1 for it to be deterministic: ",
+        "Please enter a valid number"
+    );
+
+    let det = match det_choice {
+        0 => Determinism::NonDeterministic,
+        _ => Determinism::Deterministic,
+    };
+
+    let graph = ParallelProgramGraph::new(det, &commands);
 
     let array_length = ask_for::<usize>(
         "Please enter the desired length of arrays: ",

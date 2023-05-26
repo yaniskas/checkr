@@ -47,6 +47,15 @@ impl Node {
             | Node::ParallelEnd(_) => panic!("Node is already parallel")
         }
     }
+
+    pub fn to_non_parallel(&self) -> Node {
+        match self {
+            Node::Start | Node::Node(_) | Node::End => panic!("Node is already non-parallel"),
+            Node::ParallelStart(_) => Node::Start,
+            Node::ParallelNode(_, id) => Node::Node(*id),
+            Node::ParallelEnd(_) => Node::End,
+        }
+    }
 }
 
 impl std::fmt::Debug for Node {
@@ -140,6 +149,15 @@ impl Edge {
             s.to_parallel(process_num),
             a.clone(),
             t.to_parallel(process_num)
+        )
+    }
+
+    pub fn to_non_parallel(&self) -> Edge {
+        let Edge(s, a, t) = self;
+        Edge(
+            s.to_non_parallel(),
+            a.clone(),
+            t.to_non_parallel()
         )
     }
 }

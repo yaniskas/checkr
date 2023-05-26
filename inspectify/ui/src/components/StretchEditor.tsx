@@ -191,7 +191,7 @@ monaco.languages.setMonarchTokensProvider(gclId, {
     { token: "delimiter.angle", open: "<", close: ">" },
   ],
 
-  keywords: ["if", "fi", "do", "od", "par", "rap", "ato", "ota", "initial", "ltl", "depth"],
+  keywords: ["if", "fi", "do", "od", "par", "rap", "ato", "ota", "initial", "ltl", "depth", "determinism"],
   operators: [
     "-",
     ",",
