@@ -39,10 +39,17 @@ fn main() {
     let res = verify_ltl(&graph, ltl, &memory, search_depth);
     match res {
         LTLVerificationResult::CycleFound{trace, cycle_start} => {
-            println!("Formula not satisfied");
+            println!("Formula not satisfied, violating cycle found");
             println!("Violating trace:");
             for (i, (_action, (config, _bastate))) in trace.iter().enumerate() {
                 println!("{}{}", config, if i == cycle_start {" <------ START OF CYCLE"} else {""});
+            }
+        }
+        LTLVerificationResult::ViolatingStateReached{trace} => {
+            println!("Formula not satisfied, violating state found");
+            println!("Violating trace:");
+            for (_action, (config, _bastate)) in trace {
+                println!("{}", config);
             }
         }
         LTLVerificationResult::SearchDepthExceeded => {

@@ -198,6 +198,12 @@ fn main() {
                 println!("{:?}, {:?}", config, bastate);
             }
         }
+        LTLVerificationResult::ViolatingStateReached{trace} => {
+            println!("Violating trace found:");
+            for (config, bastate) in trace {
+                println!("{:?}, {:?}", config, bastate);
+            }
+        }
         LTLVerificationResult::CycleNotFound => {
             println!("No violating trace found");
         }

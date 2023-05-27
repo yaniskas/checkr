@@ -46,7 +46,7 @@ pub fn zero_initialized_memory(pg: &ParallelProgramGraph, array_length: usize) -
 
 #[cfg(test)]
 pub mod test {
-    use crate::{parse::{parse_parallel_commands}, pg::Determinism, model_checking::{ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
+    use crate::{parse::parse_parallel_commands, pg::Determinism, model_checking::{ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
 
     use super::*;
 
@@ -70,7 +70,8 @@ pub mod test {
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
         match verify(program, ltl, Determinism::NonDeterministic) {
-            LTLVerificationResult::CycleFound{trace: _, cycle_start: _} => {
+            LTLVerificationResult::CycleFound{trace: _, cycle_start: _}
+            | LTLVerificationResult::ViolatingStateReached {trace: _} => {
                 // println!("{:#?}", c);
             },
             _ => panic!(),
@@ -361,5 +362,27 @@ pub mod test {
         n := 1
         ";
         verify_satisfies(program, "()(){n = 1}");
+    }
+
+    #[test]
+    fn infinite_true() {
+        let program = "
+        i := 0;
+        do true ->
+            i := i + 1
+        od
+        ";
+        verify_satisfies(program, "<>{i = 4}");
+    }
+
+    #[test]
+    fn infinite_false() {
+        let program = "
+        i := 0;
+        do true ->
+            i := i + 1
+        od
+        ";
+        verify_not_satisfies(program, "[]!{i = 4}");
     }
 }

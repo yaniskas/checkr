@@ -35,7 +35,8 @@ impl ToMarkdown for ModelCheckerInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModelCheckerOutput {
     FormulaHolds,
-    FormulaDoesNotHold{trace: Vec<ParallelConfiguration>, cycle_start: usize},
+    ViolatingCycleReached{trace: Vec<ParallelConfiguration>, cycle_start: usize},
+    ViolatingStateReached{trace: Vec<ParallelConfiguration>},
     SearchDepthExceeded,
     FormulaMissing,
     InvalidSearchDepth,
@@ -46,7 +47,7 @@ impl ToMarkdown for ModelCheckerOutput {
         match self {
             ModelCheckerOutput::FormulaHolds => Markdown("The formula holds".to_string()),
             ModelCheckerOutput::SearchDepthExceeded => Markdown("Search depth exceeded".to_string()),
-            ModelCheckerOutput::FormulaDoesNotHold{trace, cycle_start} => {
+            ModelCheckerOutput::ViolatingCycleReached{trace, cycle_start} => {
                 let variables = trace
                     .iter()
                     .flat_map(|t| t.memory.variables.keys().map(|k| k.to_string()))
@@ -91,16 +92,52 @@ impl ToMarkdown for ModelCheckerOutput {
                         .map(|(v, _)| v),
                     ));
                 }
-                // let final_message = match self.final_state {
-                //     TerminationState::Running => {
-                //         format!("**Stopped after {} steps**", self.execution_sequence.len())
-                //     }
-                //     TerminationState::Stuck => "**Stuck**".to_string(),
-                //     TerminationState::Terminated => "**Terminated successfully**".to_string(),
-                // };
-                // table.add_row([final_message]);
+                format!("The formula does not hold, violating cycle found\n\nViolating trace:\n{table}").into()
+            }
+            ModelCheckerOutput::ViolatingStateReached{trace} => {
+                let variables = trace
+                    .iter()
+                    .flat_map(|t| t.memory.variables.keys().map(|k| k.to_string()))
+                    .sorted()
+                    .dedup()
+                    .collect_vec();
+                let arrays = trace
+                    .iter()
+                    .flat_map(|t| t.memory.arrays.keys().map(|k| k.to_string()))
+                    .sorted()
+                    .dedup()
+                    .collect_vec();
         
-                format!("The formula does not hold\n\nViolating trace:\n{table}").into()
+                let mut table = comfy_table::Table::new();
+                table
+                    .load_preset(comfy_table::presets::ASCII_MARKDOWN)
+                    .set_header(chain!(
+                        (0..trace[0].nodes.len()).into_iter().map(|num| format!("Process {}", num)),
+                        variables.iter().cloned(),
+                        arrays.iter().cloned()
+                    ));
+
+                for t in trace {
+                    table.add_row(chain!(
+                        t.nodes.iter().map(ToString::to_string),
+                        chain!(
+                            t.memory
+                                .variables
+                                .iter()
+                                .map(|(var, value)| (value.to_string(), var.to_string()))
+                                .sorted_by_key(|(_, k)| k.to_string()),
+                            t.memory
+                                .arrays
+                                .iter()
+                                .map(|(arr, values)| {
+                                    (format!("[{}]", values.iter().format(",")), arr.to_string())
+                                })
+                                .sorted_by_key(|(_, k)| k.to_string()),
+                        )
+                        .map(|(v, _)| v),
+                    ));
+                }
+                format!("The formula does not hold, violating state found\n\nViolating trace:\n{table}").into()
             }
             ModelCheckerOutput::FormulaMissing => Markdown("Please type \"ltl\" followed by an LTL formula after the program".to_string()),
             ModelCheckerOutput::InvalidSearchDepth => Markdown("Please input a search depth greater than 0".to_string()),
@@ -161,10 +198,16 @@ impl Environment for ModelCheckerEnv {
 
         match res {
             LTLVerificationResult::CycleFound{trace, cycle_start} => {
-                Ok(ModelCheckerOutput::FormulaDoesNotHold{
+                Ok(ModelCheckerOutput::ViolatingCycleReached{
                     trace: trace.into_iter()
                         .map(|(_action, (config, _ba_state))| config).collect(),
                     cycle_start
+                })
+            }
+            LTLVerificationResult::ViolatingStateReached { trace } => {
+                Ok(ModelCheckerOutput::ViolatingStateReached{
+                    trace: trace.into_iter()
+                        .map(|(_action, (config, _ba_state))| config).collect(),
                 })
             }
             LTLVerificationResult::CycleNotFound => Ok(ModelCheckerOutput::FormulaHolds),

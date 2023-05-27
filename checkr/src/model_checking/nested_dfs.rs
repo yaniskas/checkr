@@ -4,12 +4,12 @@ use crate::{model_checking::{vwaa::{SymbolConjunction, Symbol}}, ast::{BExpr, Lo
 
 use super::{ba::{BA, BAState}, ModelCheckMemory};
 
+
+pub type ProductNode = (ParallelConfiguration, TrappingBAState);
 pub struct ProductTransitionSystem<'a> {
     pub program_graph: &'a ParallelProgramGraph,
     buchi: &'a BA,
 }
-
-pub type ProductNode = (ParallelConfiguration, TrappingBAState);
 
 impl <'a> ProductTransitionSystem<'a> {
     pub fn new(program_graph: &'a ParallelProgramGraph, buchi: &'a BA) -> Self {
@@ -89,6 +89,16 @@ impl <'a> ProductTransitionSystem<'a> {
             TrappingBAState::TrapState => false
         }
     }
+
+    pub fn state_is_violating(&self, state: &ProductNode) -> bool {
+        match &state.1 {
+            TrappingBAState::TrapState => false,
+            TrappingBAState::NormalState(bastate) => {
+                self.state_is_final(state)
+                && self.buchi.get_next_edges(&bastate).contains(&(SymbolConjunction::TT, bastate.clone()))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -102,6 +112,7 @@ pub type PathFragment = Vec<(Action, ProductNode)>;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LTLVerificationResult {
     CycleFound{trace: PathFragment, cycle_start: usize},
+    ViolatingStateReached{trace: PathFragment},
     CycleNotFound,
     SearchDepthExceeded,
 }
@@ -186,7 +197,7 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut B
                     let cycle_found = cycle_check(&s_prime, product, t, search_depth);
                     match cycle_found {
                         LTLVerificationResult::CycleFound{trace: v, cycle_start: _} => {
-                            let u: Vec<_> = u.into_iter().rev().collect();
+                            let u = u.into_iter().rev().collect::<Vec<_>>();
                             let u_len = u.len();
                             let trace = u.add_many(v);
 
@@ -208,6 +219,11 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut B
 
                             return LTLVerificationResult::CycleFound{trace, cycle_start: u_len};
                         }
+                        LTLVerificationResult::ViolatingStateReached { trace: v } => {
+                            let u = u.into_iter().rev().collect::<Vec<_>>();
+                            let trace = u.add_many(v);
+                            return LTLVerificationResult::ViolatingStateReached { trace }
+                        }
                         LTLVerificationResult::CycleNotFound => continue,
                         LTLVerificationResult::SearchDepthExceeded => {
                             search_depth_exceeded = true;
@@ -225,6 +241,8 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut B
 }
 
 fn cycle_check(s: &(Action, ProductNode), product: &ProductTransitionSystem, t: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
+    if product.state_is_violating(&s.1) {return LTLVerificationResult::ViolatingStateReached { trace: vec![s.clone()] }}
+    
     let mut v: VecDeque<(Action, ProductNode)> = VecDeque::new();
 
     v.push_front(s.clone());

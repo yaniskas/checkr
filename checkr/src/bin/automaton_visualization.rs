@@ -1,17 +1,15 @@
 use std::{fs, fmt::Display};
 
-use checkr::model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA};
+use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, util::cli_utils::ask_for_with_parser};
 
 fn main() {
-    let str = "
-    <>{i = 4}
-    ";
+    let input_ltl = ask_for_with_parser(
+        "Please enter the desired LTL formula: ", 
+        "Please enter a valid formula", 
+        parse_ltl
+    );
 
-    // let str = "
-    // []<>{5 >= 4} -> []({10 >= 9} -> <>{11 >= 10})
-    // ";
-
-    let formula = dbg!(LTL::Not(Box::new(parse_ltl(str).unwrap())));
+    let formula = dbg!(LTL::Not(Box::new(input_ltl)));
 
     let reduced = dbg!(formula.reduced());
     let nn = dbg!(reduced.to_negative_normal());
