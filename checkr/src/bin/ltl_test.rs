@@ -192,7 +192,7 @@ fn main() {
 
     let trace = nested_dfs(&graph, &simplified_ba, &memory, search_depth);
     match trace {
-        LTLVerificationResult::CycleFound(trace) => {
+        LTLVerificationResult::CycleFound{trace, cycle_start: _} => {
             println!("Violating trace found:");
             for (config, bastate) in trace {
                 println!("{:?}, {:?}", config, bastate);

@@ -4,7 +4,7 @@ use checkr::model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, G
 
 fn main() {
     let str = "
-    ()(){n = 1}
+    <>{i = 4}
     ";
 
     // let str = "

@@ -101,7 +101,7 @@ pub type PathFragment = Vec<(Action, ProductNode)>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LTLVerificationResult {
-    CycleFound(PathFragment),
+    CycleFound{trace: PathFragment, cycle_start: usize},
     CycleNotFound,
     SearchDepthExceeded,
 }
@@ -136,12 +136,12 @@ pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &BA, initial_memo
     for s in product.initial_nodes(initial_memory) {
         if !r.contains(&s) {
             match reachable_cycle(&s, &product, &mut r, &mut t, search_depth) {
-                trace @ LTLVerificationResult::CycleFound(_) => return trace,
                 LTLVerificationResult::CycleNotFound => continue,
                 LTLVerificationResult::SearchDepthExceeded => {
                     search_depth_exceeded = true;
                     continue;
                 }
+                trace => return trace
             }
         }
     }
@@ -185,8 +185,9 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut B
                     // println!("Calling inner DFS");
                     let cycle_found = cycle_check(&s_prime, product, t, search_depth);
                     match cycle_found {
-                        LTLVerificationResult::CycleFound(v) => {
+                        LTLVerificationResult::CycleFound{trace: v, cycle_start: _} => {
                             let u: Vec<_> = u.into_iter().rev().collect();
+                            let u_len = u.len();
                             let trace = u.add_many(v);
 
                             // for i in 0..(trace.len() - 1) {
@@ -205,7 +206,7 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut B
                             //     }
                             // }
 
-                            return LTLVerificationResult::CycleFound(trace);
+                            return LTLVerificationResult::CycleFound{trace, cycle_start: u_len};
                         }
                         LTLVerificationResult::CycleNotFound => continue,
                         LTLVerificationResult::SearchDepthExceeded => {
@@ -243,7 +244,7 @@ fn cycle_check(s: &(Action, ProductNode), product: &ProductTransitionSystem, t: 
         if post_s_prime.iter().map(|(_action, config)| config).collect::<Vec<_>>().contains(&&s.1) {
             v.push_front(s.clone());
             // println!("Found cycle to final state {:#?}", s);
-            return LTLVerificationResult::CycleFound(v.into_iter().rev().collect());
+            return LTLVerificationResult::CycleFound{trace: v.into_iter().rev().collect(), cycle_start: 0};
         } else {
             if let Some(s2prime) = post_s_prime.iter().find(|(_action, e)| !t.contains(e)) {
                 v.push_front(s2prime.clone());

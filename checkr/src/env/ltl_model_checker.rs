@@ -35,7 +35,7 @@ impl ToMarkdown for ModelCheckerInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModelCheckerOutput {
     FormulaHolds,
-    FormulaDoesNotHold(Vec<ParallelConfiguration>),
+    FormulaDoesNotHold{trace: Vec<ParallelConfiguration>, cycle_start: usize},
     SearchDepthExceeded,
     FormulaMissing,
     InvalidSearchDepth,
@@ -46,14 +46,14 @@ impl ToMarkdown for ModelCheckerOutput {
         match self {
             ModelCheckerOutput::FormulaHolds => Markdown("The formula holds".to_string()),
             ModelCheckerOutput::SearchDepthExceeded => Markdown("Search depth exceeded".to_string()),
-            ModelCheckerOutput::FormulaDoesNotHold(configs) => {
-                let variables = configs
+            ModelCheckerOutput::FormulaDoesNotHold{trace, cycle_start} => {
+                let variables = trace
                     .iter()
                     .flat_map(|t| t.memory.variables.keys().map(|k| k.to_string()))
                     .sorted()
                     .dedup()
                     .collect_vec();
-                let arrays = configs
+                let arrays = trace
                     .iter()
                     .flat_map(|t| t.memory.arrays.keys().map(|k| k.to_string()))
                     .sorted()
@@ -64,13 +64,15 @@ impl ToMarkdown for ModelCheckerOutput {
                 table
                     .load_preset(comfy_table::presets::ASCII_MARKDOWN)
                     .set_header(chain!(
-                        (0..configs[0].nodes.len()).into_iter().map(|num| format!("Process {}", num)),
+                        ["".to_string()],
+                        (0..trace[0].nodes.len()).into_iter().map(|num| format!("Process {}", num)),
                         variables.iter().cloned(),
                         arrays.iter().cloned()
                     ));
 
-                for t in configs {
+                for (i, t) in trace.iter().enumerate() {
                     table.add_row(chain!(
+                        [if i == *cycle_start {"**START OF CYCLE ------>**".to_string()} else {"".to_string()}],
                         t.nodes.iter().map(ToString::to_string),
                         chain!(
                             t.memory
@@ -158,10 +160,12 @@ impl Environment for ModelCheckerEnv {
         let res = verify_ltl(&graph, ltl, &memory, search_depth);
 
         match res {
-            LTLVerificationResult::CycleFound(trace) => {
-                Ok(ModelCheckerOutput::FormulaDoesNotHold(trace.into_iter()
-                    .map(|(_action, (config, _ba_state))| config).collect()
-                ))
+            LTLVerificationResult::CycleFound{trace, cycle_start} => {
+                Ok(ModelCheckerOutput::FormulaDoesNotHold{
+                    trace: trace.into_iter()
+                        .map(|(_action, (config, _ba_state))| config).collect(),
+                    cycle_start
+                })
             }
             LTLVerificationResult::CycleNotFound => Ok(ModelCheckerOutput::FormulaHolds),
             LTLVerificationResult::SearchDepthExceeded => Ok(ModelCheckerOutput::SearchDepthExceeded),

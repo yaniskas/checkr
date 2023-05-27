@@ -70,7 +70,7 @@ pub mod test {
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
         match verify(program, ltl, Determinism::NonDeterministic) {
-            LTLVerificationResult::CycleFound(_c) => {
+            LTLVerificationResult::CycleFound{trace: _, cycle_start: _} => {
                 // println!("{:#?}", c);
             },
             _ => panic!(),
@@ -79,8 +79,8 @@ pub mod test {
 
     pub fn verify_not_satisfies_det(program: &str, ltl: &str) {
         match verify(program, ltl, Determinism::Deterministic) {
-            LTLVerificationResult::CycleFound(c) => {
-                println!("{:#?}", c);
+            LTLVerificationResult::CycleFound{trace: _, cycle_start: _} => {
+                // println!("{:#?}", c);
             },
             _ => panic!(),
         }
