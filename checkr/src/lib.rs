@@ -55,6 +55,7 @@ pub mod security;
 pub mod sign;
 pub mod model_checking;
 pub mod concurrency;
+pub mod util;
 
 #[derive(Debug)]
 pub struct ProgramGenerationBuilder {

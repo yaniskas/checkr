@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::{pg::ProgramGraph, ast::Target, concurrency::ParallelProgramGraph};
+use crate::{pg::ProgramGraph, ast::Target, concurrency::ParallelProgramGraph, util::traits::Add};
 
-use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton, traits::Add};
+use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton};
 
 pub fn verify_ltl(program_graph: &ParallelProgramGraph, ltl: LTL, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let formula = LTL::Not(Box::new(ltl));
@@ -46,10 +46,7 @@ pub fn zero_initialized_memory(pg: &ParallelProgramGraph, array_length: usize) -
 
 #[cfg(test)]
 pub mod test {
-    use std::collections::{HashMap, BTreeMap};
-    use std::fs;
-
-    use crate::{parse::{parse_commands, parse_parallel_commands}, pg::Determinism, ast::Target, model_checking::{traits::Add, ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
+    use crate::{parse::{parse_parallel_commands}, pg::Determinism, model_checking::{ltl_ast::parse_ltl}, concurrency::ParallelProgramGraph};
 
     use super::*;
 
@@ -73,8 +70,8 @@ pub mod test {
 
     pub fn verify_not_satisfies(program: &str, ltl: &str) {
         match verify(program, ltl, Determinism::NonDeterministic) {
-            LTLVerificationResult::CycleFound(c) => {
-                println!("{:#?}", c);
+            LTLVerificationResult::CycleFound(_c) => {
+                // println!("{:#?}", c);
             },
             _ => panic!(),
         }

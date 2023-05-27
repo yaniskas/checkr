@@ -6,7 +6,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::{ast::{AExpr, BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, SimpleCommand, AtomicStatement, SimpleCommands, AtomicGuard, AtomicGuards}, model_checking::traits::AddMany, concurrency::ParallelProgramGraph};
+use crate::{ast::{BExpr, Command, Commands, Guard, LogicOp, Target, Assignment, AtomicStatement, SimpleCommands, AtomicGuard, AtomicGuards}, concurrency::ParallelProgramGraph, util::traits::AddMany};
 
 #[derive(Debug, Clone)]
 pub struct ProgramGraph {

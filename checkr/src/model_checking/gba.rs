@@ -1,15 +1,13 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
 use std::hash::Hash;
 use std::collections::{BTreeSet, BTreeMap, VecDeque};
 use std::rc::Rc;
-use std::iter;
 
 use crate::model_checking::vwaa::LTLConjunction;
+use crate::util::traits::{Singleton, AddMany, Add};
 
 use super::ltl_ast::NegativeNormalLTL;
-use super::vwaa::{Symbol, VWAATransitionResult, SymbolConjunction, VWAA, circle_x, Conjuct};
-use super::traits::*;
+use super::vwaa::{VWAATransitionResult, SymbolConjunction, VWAA, circle_x, Conjuct};
 
 type GBATransitionResult = (SymbolConjunction, LTLConjunction);
 
@@ -66,15 +64,15 @@ impl GBA {
 
         let accepting_transitions = find_accepting_transitions(&final_states, &delta, &delta2prime);
         // println!("Number of accepting transition sets: {}", accepting_transitions.len());
-        for ats in &accepting_transitions {
-            // println!("Number of accepting transitions: {}", ats.len());
-            // println!("Accepting transitions in this set:");
-            for at in ats {
-                // print!("Transition: ");
-                let GBATransition(source, action, target) = at;
-                // println!("source: {} action: {} target: {}", source, action, target);
-            }
-        }
+        // for ats in &accepting_transitions {
+        //     println!("Number of accepting transitions: {}", ats.len());
+        //     println!("Accepting transitions in this set:");
+        //     for at in ats {
+        //         print!("Transition: ");
+        //         let GBATransition(source, action, target) = at;
+        //         println!("source: {} action: {} target: {}", source, action, target);
+        //     }
+        // }
 
         // println!("Number of transitions before reduction: {}", delta2primetransitions.len());
         let deltaprimetransitions = remove_non_minimal(delta2primetransitions, transition_comparator(&accepting_transitions));
@@ -89,9 +87,9 @@ impl GBA {
             })
             .collect::<BTreeSet<_>>();
         // println!("Number of accepting transition sets: {}", accepting_transitions.len());
-        for ats in &accepting_transitions {
-            // println!("Number of accepting transitions: {}", ats.len());
-        }
+        // for ats in &accepting_transitions {
+        //     println!("Number of accepting transitions: {}", ats.len());
+        // }
 
         let delta_prime = agglomerate_transitions(deltaprimetransitions);
         
@@ -130,7 +128,7 @@ pub fn agglomerate_transitions(transitions: BTreeSet<GBATransition>) -> BTreeMap
 
 pub fn states_from_transitions(transitions: &BTreeSet<GBATransition>) -> BTreeSet<LTLConjunction> {
     transitions.iter()
-            .flat_map(|GBATransition(source, symcon, target)| [source.clone(), target.clone()])
+            .flat_map(|GBATransition(source, _symcon, target)| [source.clone(), target.clone()])
             .collect()
 }
 
@@ -199,7 +197,7 @@ fn get_reachable(delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>,
     while let Some(current_state) = queue.pop_front() {
         // println!("Current state: {}", current_state);
 
-        if (visited.contains(current_state)) {
+        if visited.contains(current_state) {
             // println!("State already visited");
             continue;
         }
@@ -213,7 +211,7 @@ fn get_reachable(delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>,
         };
 
         let next_states = trans_result.iter()
-            .map(|(symcon, target)| target);
+            .map(|(_symcon, target)| target);
 
         queue.extend(next_states);
 
@@ -221,7 +219,7 @@ fn get_reachable(delta: BTreeMap<LTLConjunction, BTreeSet<GBATransitionResult>>,
     }
 
     vec.into_iter()
-        .filter(|(value, targets)| visited.contains(value))
+        .filter(|(value, _targets)| visited.contains(value))
         .collect::<BTreeMap<_, _>>()
 
 }
@@ -277,7 +275,7 @@ fn find_accepting_transitions(
                 .flat_map(|(e, set)| {
                     set.iter().map(move |(alpha, eprime)| (e, alpha, eprime))
                 })
-                .filter(|(e, alpha, eprime)| {
+                .filter(|(_e, alpha, eprime)| {
                     !eprime.contains(fstate) || delta_fstate.iter().any(|(beta, e2prime)| {
                         alpha.is_subset(&beta) && !e2prime.contains(fstate) && e2prime.is_subset(eprime)
                     })

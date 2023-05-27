@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, VecDeque};
 
-use crate::{model_checking::{ProgramGraph, vwaa::{SymbolConjunction, Symbol}, traits::Repeat}, interpreter::{Configuration}, ast::{BExpr, LogicOp}, sign::Memory, pg::{Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}};
+use crate::{model_checking::{vwaa::{SymbolConjunction, Symbol}}, ast::{BExpr, LogicOp}, pg::{Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}, util::traits::AddMany};
 
-use super::{ba::{BA, BAState}, ModelCheckMemory, traits::AddMany};
+use super::{ba::{BA, BAState}, ModelCheckMemory};
 
 pub struct ProductTransitionSystem<'a> {
     pub program_graph: &'a ParallelProgramGraph,
@@ -128,14 +128,14 @@ fn symcon_to_bexp(symcon: &SymbolConjunction) -> BExpr {
 pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let product = ProductTransitionSystem::new(program_graph, buchi);
 
-    let mut R: BTreeSet<ProductNode> = BTreeSet::new();
-    let mut T: BTreeSet<ProductNode> = BTreeSet::new();
+    let mut r: BTreeSet<ProductNode> = BTreeSet::new();
+    let mut t: BTreeSet<ProductNode> = BTreeSet::new();
 
     let mut search_depth_exceeded = false;
     
     for s in product.initial_nodes(initial_memory) {
-        if !R.contains(&s) {
-            match reachable_cycle(&s, &product, &mut R, &mut T, search_depth) {
+        if !r.contains(&s) {
+            match reachable_cycle(&s, &product, &mut r, &mut t, search_depth) {
                 trace @ LTLVerificationResult::CycleFound(_) => return trace,
                 LTLVerificationResult::CycleNotFound => continue,
                 LTLVerificationResult::SearchDepthExceeded => {
@@ -149,45 +149,45 @@ pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &BA, initial_memo
     if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut BTreeSet<ProductNode>, T: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
-    let mut U: VecDeque<(Action, ProductNode)> = VecDeque::new();
+fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, r: &mut BTreeSet<ProductNode>, t: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
+    let mut u: VecDeque<(Action, ProductNode)> = VecDeque::new();
 
-    U.push_front((Action::Skip, s.clone()));
-    R.insert(s.clone());
+    u.push_front((Action::Skip, s.clone()));
+    r.insert(s.clone());
 
     let mut search_depth_exceeded = false;
 
-    while let Some(s_prime) = U.front() {
-        if U.len() >= search_depth {
+    while let Some(s_prime) = u.front() {
+        if u.len() >= search_depth {
             search_depth_exceeded = true;
-            U.pop_front();
+            u.pop_front();
             continue;
         }
 
         // println!("Iterating outer DFS");
         // println!("Checking state {:#?}", s_prime);
         // TODO
-        let mut post_s_prime = product.next_nodes(&s_prime.1).into_iter().collect::<Vec<_>>();
+        let post_s_prime = product.next_nodes(&s_prime.1).into_iter().collect::<Vec<_>>();
         // println!("Found next nodes");
         // println!("Number of next nodes: {}", post_s_prime.len());
-        match post_s_prime.into_iter().find(|(act, e)| !R.contains(e)) {
+        match post_s_prime.into_iter().find(|(_act, e)| !r.contains(e)) {
             Some(s2prime) => {
                 // println!("Found new node");
-                U.push_front(s2prime.clone());
-                R.insert(s2prime.1);
+                u.push_front(s2prime.clone());
+                r.insert(s2prime.1);
             },
             None => {
                 // println!("Extracting s prime");
-                let s_prime = U.pop_front().unwrap();
+                let s_prime = u.pop_front().unwrap();
                 // println!("Removed s prime");
                 if product.state_is_final(&s_prime.1) {
                     // println!("State {:#?} is final", s_prime);
                     // println!("Calling inner DFS");
-                    let cycle_found = cycle_check(&s_prime, product, T, search_depth);
+                    let cycle_found = cycle_check(&s_prime, product, t, search_depth);
                     match cycle_found {
-                        LTLVerificationResult::CycleFound(V) => {
-                            let U: Vec<_> = U.into_iter().rev().collect();
-                            let trace = U.add_many(V);
+                        LTLVerificationResult::CycleFound(v) => {
+                            let u: Vec<_> = u.into_iter().rev().collect();
+                            let trace = u.add_many(v);
 
                             // for i in 0..(trace.len() - 1) {
                             //     if !product.next_nodes(&trace[i].1).into_iter().collect::<Vec<_>>().contains(&trace[i+1]) {
@@ -223,33 +223,33 @@ fn reachable_cycle(s: &ProductNode, product: &ProductTransitionSystem, R: &mut B
     if search_depth_exceeded {LTLVerificationResult::SearchDepthExceeded} else {LTLVerificationResult::CycleNotFound}
 }
 
-fn cycle_check(s: &(Action, ProductNode), product: &ProductTransitionSystem, T: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
-    let mut V: VecDeque<(Action, ProductNode)> = VecDeque::new();
+fn cycle_check(s: &(Action, ProductNode), product: &ProductTransitionSystem, t: &mut BTreeSet<ProductNode>, search_depth: usize) -> LTLVerificationResult {
+    let mut v: VecDeque<(Action, ProductNode)> = VecDeque::new();
 
-    V.push_front(s.clone());
-    T.insert(s.1.clone());
+    v.push_front(s.clone());
+    t.insert(s.1.clone());
 
     let mut search_depth_exceeded = false;
 
-    while let Some(s_prime) = V.front() {
-        if V.len() >= search_depth {
+    while let Some(s_prime) = v.front() {
+        if v.len() >= search_depth {
             search_depth_exceeded = true;
-            V.pop_front();
+            v.pop_front();
             continue;
         }
 
         // println!("Iterating inner DFS");
         let post_s_prime = product.next_nodes(&s_prime.1).into_iter().collect::<BTreeSet<_>>();
-        if post_s_prime.iter().map(|(action, config)| config).collect::<Vec<_>>().contains(&&s.1) {
-            V.push_front(s.clone());
+        if post_s_prime.iter().map(|(_action, config)| config).collect::<Vec<_>>().contains(&&s.1) {
+            v.push_front(s.clone());
             // println!("Found cycle to final state {:#?}", s);
-            return LTLVerificationResult::CycleFound(V.into_iter().rev().collect());
+            return LTLVerificationResult::CycleFound(v.into_iter().rev().collect());
         } else {
-            if let Some(s2prime) = post_s_prime.iter().find(|(action, e)| !T.contains(e)) {
-                V.push_front(s2prime.clone());
-                T.insert(s2prime.1.clone());
+            if let Some(s2prime) = post_s_prime.iter().find(|(_action, e)| !t.contains(e)) {
+                v.push_front(s2prime.clone());
+                t.insert(s2prime.1.clone());
             } else {
-                V.pop_front();
+                v.pop_front();
             }
         }
     }

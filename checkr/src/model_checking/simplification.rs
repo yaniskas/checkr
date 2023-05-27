@@ -1,11 +1,10 @@
 use std::collections::{BTreeSet, BTreeMap, VecDeque};
 use std::fmt::Debug;
 
-use crate::model_checking::traits::AddMany;
+use crate::util::traits::{Add, WithRemoved, AddMany};
 
 use super::ba::{BA, BAState};
-use super::gba::{GBA, GBATransition, Subsettable, agglomerate_transitions, states_from_transitions};
-use super::traits::{Add, WithRemoved};
+use super::gba::{GBA, GBATransition, Subsettable, agglomerate_transitions};
 use super::vwaa::{LTLConjunction, SymbolConjunction};
 
 // Based on Fast pg. 63 / Section 6
@@ -121,7 +120,7 @@ impl SimplifiableAutomaton for GBA {
     fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
         // println!("Results:");
         match self.delta.get(&state) {
-            Some(results) => results.iter().map(|(symcon, target)| {
+            Some(results) => results.iter().map(|(_symcon, target)| {
                 // println!("{}", symcon);
                 // println!("{:?}", target);
                 target.clone()
@@ -217,7 +216,7 @@ impl SimplifiableAutomaton for GBA {
         let accepting_transitions = accepting_transitions.into_iter()
             .map(|acctranset| {
                 acctranset.into_iter()
-                    .filter(|GBATransition(source, action, sink)| !to_remove_set.contains(source))
+                    .filter(|GBATransition(source, _action, _sink)| !to_remove_set.contains(source))
                     .map(|GBATransition(source, action, sink)| {
                         let sink = {
                             if let Some(replacement) = removed_to_new_mapping.get(&sink) {
@@ -277,7 +276,7 @@ impl SimplifiableAutomaton for BA {
     fn get_next_states(&self, state: &Self::State) -> BTreeSet<Self::State> {
         // println!("Results:");
         match self.delta.get(&state) {
-            Some(results) => results.iter().map(|(symcon, targets)| {
+            Some(results) => results.iter().map(|(_symcon, targets)| {
                 // println!("{}", symcon);
                 // println!("{:?}", targets);
                 targets.clone()

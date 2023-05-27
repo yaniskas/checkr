@@ -1,6 +1,8 @@
 use std::{collections::{BTreeSet, BTreeMap}, fmt::Display};
 
-use super::{vwaa::{SymbolConjunction, LTLConjunction}, gba::{GBA, GBATransition}, traits::{Add, AddMany}};
+use crate::util::traits::{Add, AddMany};
+
+use super::{vwaa::{SymbolConjunction, LTLConjunction}, gba::{GBA, GBATransition}};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 // state number, layer

@@ -2,7 +2,7 @@ use std::{fmt::Display, collections::{HashSet, HashMap}};
 use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 
-use crate::{pg::{ProgramGraph, Action, Determinism, Node, Edge}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::{ModelCheckMemory, traits::AddMany}};
+use crate::{pg::{ProgramGraph, Action, Determinism, Node, Edge}, interpreter::{Configuration, next_configurations as next_configurations_pg}, ast::ParallelCommands, model_checking::{ModelCheckMemory}, util::traits::AddMany};
 
 #[derive(Debug, Clone)]
 pub struct ParallelProgramGraph(pub Vec<ProgramGraph>);
@@ -129,7 +129,7 @@ pub fn next_configurations(ppg: &ParallelProgramGraph, config: &ParallelConfigur
 
 #[cfg(test)]
 mod test {
-    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies, verify_satisfies_det, verify_not_satisfies_det};
+    use crate::model_checking::ltl_verification::test::{verify_satisfies, verify_not_satisfies, verify_satisfies_det};
 
     #[test]
     fn flip_flop() {

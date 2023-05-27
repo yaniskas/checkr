@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, rc::Rc, fmt::Display};
 
-use crate::{ast::BExpr, parse::ParseError, model_checking::traits::Add, gcl};
+use crate::{ast::BExpr, parse::ParseError, gcl, util::traits::Add};
 use once_cell::sync::Lazy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

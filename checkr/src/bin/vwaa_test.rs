@@ -1,6 +1,6 @@
-use std::fs;
+use std::{fs, fmt::Display};
 
-use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::{VWAA, LTLConjunction}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, ast::{BExpr, AExpr, RelOp}};
+use checkr::model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA};
 
 fn main() {
     let str = "
@@ -39,7 +39,7 @@ fn main() {
         "digraph vwaa {\n".to_string()
         + &vwaa_edges_str
         + "}";
-    fs::create_dir_all("graphviz_output");
+    fs::create_dir_all("graphviz_output").unwrap();
     fs::write("graphviz_output/vwaa5.dot", graphviz_output).unwrap();
 
 
@@ -140,15 +140,17 @@ fn main() {
     println!("Simplified BA edges:");
     println!("{}", simplified_ba_edges_str);
 
-    let initial_state_str = format!("node [shape = doublecircle]; \"{}\"\nnode [shape = circle]\n", simplified_ba.initial_state);
-
     let simplified_ba_output =
         "digraph ba_simplified {\n".to_string()
-        + &initial_state_str
+        + &initial_state_arrow(&simplified_ba.initial_state)
         + &simplified_ba_edges_str
         + "}";
     fs::write("graphviz_output/ba_simplified.dot", simplified_ba_output).unwrap();
+}
 
-
-
+fn initial_state_arrow(initial_state_name: &impl Display) -> String {
+    format!(
+        "invis [label = \"\", shape = none, height = 0, width = 0]\n\
+        invis -> \"{initial_state_name}\"\n"
+    )
 }

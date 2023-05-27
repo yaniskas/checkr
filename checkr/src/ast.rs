@@ -3,7 +3,7 @@ use std::{collections::HashSet, str::FromStr};
 use itertools::Either;
 use serde::{Deserialize, Serialize};
 
-use crate::model_checking::{traits::AddMany, ltl_ast::LTL, ModelCheckMemory};
+use crate::{model_checking::ltl_ast::LTL, util::traits::AddMany};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Target<Idx = ()> {

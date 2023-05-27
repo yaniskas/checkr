@@ -1,6 +1,6 @@
-use std::{io::{self, Write}, collections::BTreeMap, str::FromStr, fs};
+use std::{collections::BTreeMap, fs};
 
-use checkr::{parse, pg::{ProgramGraph, Determinism}, ast::{Variable, Target, Array, Commands, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, check_model, ltl_ast::LTL, vwaa::{VWAA, LTLConjunction}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}, concurrency::ParallelProgramGraph};
+use checkr::{parse, pg::Determinism, ast::{Variable, Target, BExpr, AExpr, RelOp}, model_checking::{ModelCheckMemory, ltl_ast::LTL, vwaa::{VWAA}, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}}, concurrency::ParallelProgramGraph};
 use itertools::Itertools;
 
 fn main() {

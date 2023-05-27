@@ -1,17 +1,14 @@
 pub mod ltl_ast;
 pub mod vwaa;
 pub mod gba;
-pub mod traits;
 pub mod simplification;
 pub mod ba;
 pub mod nested_dfs;
 pub mod ltl_verification;
 
-use std::{collections::{HashSet, VecDeque, HashMap}, fmt::Display};
+use std::collections::{HashSet, VecDeque, HashMap};
 
-use itertools::Itertools;
-
-use crate::{interpreter::{InterpreterMemory}, pg::{ProgramGraph, Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}, model_checking::traits::Repeat};
+use crate::{interpreter::InterpreterMemory, pg::{Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}};
 
 
 pub type ModelCheckMemory = InterpreterMemory;

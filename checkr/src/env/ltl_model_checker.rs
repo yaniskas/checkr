@@ -1,13 +1,10 @@
 use itertools::{chain, Itertools};
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     ast::{Commands, Command, ParallelCommands, ModelCheckingArgs, FullAssignment},
     generation::Generate,
-    interpreter::{Configuration, Interpreter, InterpreterMemory, TerminationState},
-    pg::{Determinism, Node, ProgramGraph},
-    sign::{Memory, MemoryRef},
+    pg::Determinism,
     ValidationResult::CorrectTerminated,
     concurrency::{ParallelProgramGraph, ParallelConfiguration},
     model_checking::{ltl_verification::{verify_ltl, zero_initialized_memory}, nested_dfs::LTLVerificationResult},
@@ -24,7 +21,7 @@ pub struct ModelCheckerInput;
 impl Generate for ModelCheckerInput {
     type Context = Commands;
 
-    fn gen<R: rand::Rng>(cx: &mut Self::Context, mut rng: &mut R) -> Self {
+    fn gen<R: rand::Rng>(_cx: &mut Self::Context, mut _rng: &mut R) -> Self {
         ModelCheckerInput
     }
 }
@@ -117,7 +114,7 @@ impl Environment for ModelCheckerEnv {
 
     const ANALYSIS: Analysis = Analysis::LTLModelChecking;
 
-    fn run(&self, cmds: &Commands, input: &Self::Input) -> Result<Self::Output, EnvError> {
+    fn run(&self, cmds: &Commands, _input: &Self::Input) -> Result<Self::Output, EnvError> {
         if cmds.0.len() == 0 {panic!("Not enough information to parse")}
 
         let args = if let Command::ModelCheckingArgs(args) = &cmds.0[0] {

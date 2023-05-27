@@ -2,10 +2,9 @@ use std::{collections::{BTreeSet, BTreeMap}, rc::Rc, fmt::Display};
 
 use itertools::Itertools;
 
-use crate::ast::BExpr;
+use crate::{ast::BExpr, util::traits::{AddMany, Singleton, Add}};
 
 use super::ltl_ast::{NegativeNormalLTL, temporal_subformulae, until_subformulae};
-use super::traits::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VWAA {
