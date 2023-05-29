@@ -1,17 +1,9 @@
-pub mod ltl_ast;
-pub mod vwaa;
-pub mod gba;
-pub mod simplification;
-pub mod ba;
-pub mod nested_dfs;
-pub mod ltl_verification;
-
 use std::collections::{HashSet, VecDeque, HashMap};
 
-use crate::{interpreter::InterpreterMemory, pg::{Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}};
+use crate::{pg::{Node, Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}};
 
+use super::ModelCheckMemory;
 
-pub type ModelCheckMemory = InterpreterMemory;
 
 pub struct CheckedModel {
     pub stuck_states: Vec<ParallelConfiguration>,

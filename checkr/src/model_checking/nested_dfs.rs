@@ -2,24 +2,24 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::{model_checking::{vwaa::{SymbolConjunction, Symbol}}, ast::{BExpr, LogicOp}, pg::{Action}, concurrency::{ParallelProgramGraph, ParallelConfiguration, next_configurations}, util::traits::AddMany};
 
-use super::{ba::{BA, BAState}, ModelCheckMemory};
+use super::{nba::{NBA, NBAState}, ModelCheckMemory};
 
 
-pub type ProductNode = (ParallelConfiguration, TrappingBAState);
+pub type ProductNode = (ParallelConfiguration, TrappingNBAState);
 pub struct ProductTransitionSystem<'a> {
     pub program_graph: &'a ParallelProgramGraph,
-    buchi: &'a BA,
+    buchi: &'a NBA,
 }
 
 impl <'a> ProductTransitionSystem<'a> {
-    pub fn new(program_graph: &'a ParallelProgramGraph, buchi: &'a BA) -> Self {
+    pub fn new(program_graph: &'a ParallelProgramGraph, buchi: &'a NBA) -> Self {
         Self { program_graph, buchi }
     }
 
     pub fn next_nodes(&self, node: &ProductNode) -> impl IntoIterator<Item = (Action, ProductNode)> + 'a {
         let (config, tbastate) = node;
 
-        if let TrappingBAState::NormalState(bastate) = tbastate {
+        if let TrappingNBAState::NormalState(nbastate) = tbastate {
             // println!("In normal state");
             let potential_next_configs = next_configurations(self.program_graph, &config);
 
@@ -32,17 +32,17 @@ impl <'a> ProductTransitionSystem<'a> {
             //
 
             // let potential_next_ba_states = dbg!(self.buchi.get_next_edges(dbg!(bastate)));
-            let potential_next_ba_states = self.buchi.get_next_edges(bastate);
+            let potential_next_nba_states = self.buchi.get_next_edges(nbastate);
 
             let next_nodes = potential_next_configs.into_iter()
                 .flat_map(move |(action, config)| {
-                    potential_next_ba_states.iter()
-                        .filter_map(|(symcon, bastate)| {
+                    potential_next_nba_states.iter()
+                        .filter_map(|(symcon, nbastate)| {
                             let condition = symcon_to_bexp(symcon);
                             if condition.semantics(&config.memory) == Ok(true) {
                                 // println!("BExp {} is true in memory {:?}", condition, config.memory);
                                 // println!("Leading to (config, bastate) = ({:?}, {:?})", config, bastate);
-                                Some((action.clone(), (config.clone(), bastate.clone())))
+                                Some((action.clone(), (config.clone(), nbastate.clone())))
                             }
                             else {
                                 // println!("BExp {} is NOT true in memory {:?}", condition, config.memory);
@@ -52,7 +52,7 @@ impl <'a> ProductTransitionSystem<'a> {
                         })
                         .collect::<Vec<_>>()
                 })
-                .map(|(action, (config, bastate))| (action, (config, TrappingBAState::NormalState(bastate))))
+                .map(|(action, (config, nbastate))| (action, (config, TrappingNBAState::NormalState(nbastate))))
                 .collect::<Vec<_>>();
             
             if next_nodes.len() != 0 {
@@ -62,7 +62,7 @@ impl <'a> ProductTransitionSystem<'a> {
                 // If there are no valid edges, keep the same transition system node and make the BA move to a trap state
                 // Principles pg. 187
                 // println!("Returning trap state");
-                vec![(Action::Skip, (config.clone(), TrappingBAState::TrapState))]
+                vec![(Action::Skip, (config.clone(), TrappingNBAState::TrapState))]
             }
         } else {
             // If the BA is in the trap state, do not change state
@@ -73,37 +73,37 @@ impl <'a> ProductTransitionSystem<'a> {
 
     pub fn initial_nodes(&self, initial_memory: &'a ModelCheckMemory) -> impl Iterator<Item = ProductNode> + 'a {
         self.buchi.get_next_edges(&self.buchi.initial_state).into_iter()
-            .filter(|(action, _bastate)| {
+            .filter(|(action, _nbastate)| {
                 let condition = symcon_to_bexp(action);
                 condition.semantics(initial_memory) == Ok(true)
             })
-            .map(|(_action, bastate)| {
-                (ParallelConfiguration {nodes: self.program_graph.initial_nodes(), memory: initial_memory.clone()}, TrappingBAState::NormalState(bastate.clone()))
+            .map(|(_action, nbastate)| {
+                (ParallelConfiguration {nodes: self.program_graph.initial_nodes(), memory: initial_memory.clone()}, TrappingNBAState::NormalState(nbastate.clone()))
             })
     }
 
     pub fn state_is_final(&self, state: &ProductNode) -> bool {
-        let bastate = &state.1;
-        match bastate {
-            TrappingBAState::NormalState(state) => state.1 == self.buchi.top_layer,
-            TrappingBAState::TrapState => false
+        let nbastate = &state.1;
+        match nbastate {
+            TrappingNBAState::NormalState(state) => state.1 == self.buchi.top_layer,
+            TrappingNBAState::TrapState => false
         }
     }
 
     pub fn state_is_violating(&self, state: &ProductNode) -> bool {
         match &state.1 {
-            TrappingBAState::TrapState => false,
-            TrappingBAState::NormalState(bastate) => {
+            TrappingNBAState::TrapState => false,
+            TrappingNBAState::NormalState(nbastate) => {
                 self.state_is_final(state)
-                && self.buchi.get_next_edges(&bastate).contains(&(SymbolConjunction::TT, bastate.clone()))
+                && self.buchi.get_next_edges(&nbastate).contains(&(SymbolConjunction::TT, nbastate.clone()))
             }
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum TrappingBAState {
-    NormalState(BAState),
+pub enum TrappingNBAState {
+    NormalState(NBAState),
     TrapState
 }
 
@@ -136,7 +136,7 @@ fn symcon_to_bexp(symcon: &SymbolConjunction) -> BExpr {
     }
 }
 
-pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &BA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
+pub fn nested_dfs(program_graph: &ParallelProgramGraph, buchi: &NBA, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let product = ProductTransitionSystem::new(program_graph, buchi);
 
     let mut r: BTreeSet<ProductNode> = BTreeSet::new();

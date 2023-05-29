@@ -6,27 +6,27 @@ use super::{vwaa::{SymbolConjunction, LTLConjunction}, gba::{GBA, GBATransition}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 // state number, layer
-pub struct BAState(pub usize, pub usize);
+pub struct NBAState(pub usize, pub usize);
 
-impl Display for BAState {
+impl Display for NBAState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}, {}", self.0, self.1)
     }
 }
 
-pub type BATransitionResult = (SymbolConjunction, BAState);
+pub type NBATransitionResult = (SymbolConjunction, NBAState);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BA {
-    pub delta: BTreeMap<BAState, BTreeSet<BATransitionResult>>,
-    pub initial_state: BAState,
+pub struct NBA {
+    pub delta: BTreeMap<NBAState, BTreeSet<NBATransitionResult>>,
+    pub initial_state: NBAState,
     pub top_layer: usize,
 }
 
-impl BA {
-    pub fn from_gba(gba: GBA) -> BA {
+impl NBA {
+    pub fn from_gba(gba: GBA) -> NBA {
         // Fast pg. 62 step 3
-        // GBA-BA conversion can give different results depending on the order of accepting transition sets, but it seems 
+        // GBA-NBA conversion can give different results depending on the order of accepting transition sets, but it seems 
         // that the results are equivalent
         let GBA {states, delta: _, initial_state, accepting_transitions} = &gba;
 
@@ -45,20 +45,20 @@ impl BA {
                         let targets = gba.get_next_edges(q).into_iter()
                             .map(|(alpha, q_prime)| {
                                 let j_prime = next(j, q, alpha, q_prime, &accepting_transitions);
-                                (alpha.clone(), BAState(state_to_int[q_prime], j_prime))
+                                (alpha.clone(), NBAState(state_to_int[q_prime], j_prime))
                             })
                             .collect::<BTreeSet<_>>();
-                        (BAState(state_to_int[q], j), targets)
+                        (NBAState(state_to_int[q], j), targets)
                     })
             })
             .collect();
 
-        let initial_state_ba = BAState(state_to_int[&initial_state], 0);
+        let initial_state_nba = NBAState(state_to_int[&initial_state], 0);
 
-        BA {delta: delta_prime, initial_state: initial_state_ba, top_layer}
+        NBA {delta: delta_prime, initial_state: initial_state_nba, top_layer}
     }
 
-    pub fn get_states(&self) -> BTreeSet<BAState> {
+    pub fn get_states(&self) -> BTreeSet<NBAState> {
         self.delta.iter()
             .flat_map(|(source, targets)| {
                 Vec::new()
@@ -68,7 +68,7 @@ impl BA {
             .collect()
     }
 
-    pub fn get_next_edges(&self, state: &BAState) -> BTreeSet<&BATransitionResult> {
+    pub fn get_next_edges(&self, state: &NBAState) -> BTreeSet<&NBATransitionResult> {
         match self.delta.get(&state) {
             Some(results) => results.iter().collect(),
             None => BTreeSet::new()

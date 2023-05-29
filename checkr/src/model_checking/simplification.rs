@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::util::traits::{Add, WithRemoved, AddMany};
 
-use super::ba::{BA, BAState};
+use super::nba::{NBA, NBAState};
 use super::gba::{GBA, GBATransition, Subsettable, agglomerate_transitions};
 use super::vwaa::{LTLConjunction, SymbolConjunction};
 
@@ -94,8 +94,8 @@ pub trait SimplifiableAutomaton: Clone + Eq {
                     // println!("The following states are equivalent:");
                     // println!("{:?}", state1);
                     // println!("{:?}", state2);
-                    self.get_next_states(state1);
-                    self.get_next_states(state2);
+                    // self.get_next_states(state1);
+                    // self.get_next_states(state2);
                     to_merge.push((state1.clone(), state2.clone()));
                     dealt_vec[j] = true;
                 }
@@ -264,10 +264,10 @@ fn merge_states_in_transitions<'a, T: Ord + Eq + Clone + 'a + Debug, U: Eq + Ord
         .collect::<BTreeMap<_, _>>()
 }
 
-impl SimplifiableAutomaton for BA {
-    type State = BAState;
+impl SimplifiableAutomaton for NBA {
+    type State = NBAState;
 
-    type Transition = (BAState, SymbolConjunction, BAState);
+    type Transition = (NBAState, SymbolConjunction, NBAState);
 
     fn get_initial_states(&self) -> BTreeSet<Self::State> {
         BTreeSet::new().add(self.initial_state.clone())
@@ -286,7 +286,7 @@ impl SimplifiableAutomaton for BA {
     }
 
     fn with_only_states(self, states: BTreeSet<Self::State>) -> Self {
-        let BA {delta, initial_state, top_layer} = self;
+        let NBA {delta, initial_state, top_layer} = self;
 
         let delta = delta.into_iter()
             .filter(|(source, _targets)| states.contains(source))
@@ -298,7 +298,7 @@ impl SimplifiableAutomaton for BA {
             })
             .collect();
             
-        BA {delta, initial_state, top_layer}
+        NBA {delta, initial_state, top_layer}
     }
 
     fn get_transitions(&self) -> BTreeSet<Self::Transition> {
@@ -317,7 +317,7 @@ impl SimplifiableAutomaton for BA {
     }
 
     fn with_only_transitions(self, transitions: BTreeSet<Self::Transition>) -> Self {
-        let BA {delta: _, initial_state, top_layer} = self;
+        let NBA {delta: _, initial_state, top_layer} = self;
 
         let delta_prime = transitions.into_iter()
             .fold(BTreeMap::new(), |mut acc, (source, action, sink)| {
@@ -325,7 +325,7 @@ impl SimplifiableAutomaton for BA {
                 acc
             });
         
-        BA {delta: delta_prime, initial_state, top_layer}
+        NBA {delta: delta_prime, initial_state, top_layer}
     }
 
     fn get_states(&self) -> BTreeSet<Self::State> {
@@ -341,7 +341,7 @@ impl SimplifiableAutomaton for BA {
         // println!("to_merge length: {}", to_merge.len());
         // println!("{:?}", to_merge);
 
-        let BA {delta, initial_state, top_layer: _} = self;
+        let NBA {delta, initial_state, top_layer: _} = self;
 
         // println!("delta length: {}", delta.len());
 
@@ -363,14 +363,14 @@ impl SimplifiableAutomaton for BA {
             .flat_map(|(source, targets)| {
                 Vec::new()
                     .add(source.1)
-                    .add_many(targets.iter().map(|(_symcon, BAState(_state, layer))| layer.clone()))
+                    .add_many(targets.iter().map(|(_symcon, NBAState(_state, layer))| layer.clone()))
             })
             .max()
             .unwrap_or(0);
 
         // println!("New delta length: {}", delta.len());
 
-        BA {delta, initial_state, top_layer}
+        NBA {delta, initial_state, top_layer}
         
     }
 }

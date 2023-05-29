@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{pg::ProgramGraph, ast::Target, concurrency::ParallelProgramGraph, util::traits::Add};
 
-use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, ba::BA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton};
+use super::{ltl_ast::LTL, ModelCheckMemory, vwaa::VWAA, gba::GBA, nba::NBA, nested_dfs::{nested_dfs, LTLVerificationResult}, simplification::SimplifiableAutomaton};
 
 pub fn verify_ltl(program_graph: &ParallelProgramGraph, ltl: LTL, initial_memory: &ModelCheckMemory, search_depth: usize) -> LTLVerificationResult {
     let formula = LTL::Not(Box::new(ltl));
@@ -12,10 +12,10 @@ pub fn verify_ltl(program_graph: &ParallelProgramGraph, ltl: LTL, initial_memory
     let vwaa = VWAA::from_ltl(&nn);
     let gba = GBA::from_vwaa(vwaa);
     let simplified_gba = gba.simplify();
-    let ba = BA::from_gba(simplified_gba);
-    let simplified_ba = ba.simplify();
+    let nba = NBA::from_gba(simplified_gba);
+    let simplified_nba = nba.simplify();
 
-    nested_dfs(program_graph, &simplified_ba, initial_memory, search_depth)
+    nested_dfs(program_graph, &simplified_nba, initial_memory, search_depth)
 }
 
 pub fn zero_initialized_memory(pg: &ParallelProgramGraph, array_length: usize) -> ModelCheckMemory {
@@ -121,7 +121,8 @@ pub mod test {
                 n := n + 1
             [] true ->
                 n := n - 1
-            fi
+            fi;
+            i := i + 1
         od
         ";
         verify_not_satisfies(program, "[]{n >= 0}");

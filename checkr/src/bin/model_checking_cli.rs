@@ -1,6 +1,6 @@
 use std::fs;
 
-use checkr::{parse, pg::Determinism, model_checking::check_model, concurrency::ParallelProgramGraph, util::cli_utils::{ask_for_with_parser, ask_for, ask_for_memory_assignment}};
+use checkr::{parse, pg::Determinism, model_checking::stuck_states::check_model, concurrency::ParallelProgramGraph, util::cli_utils::{ask_for_with_parser, ask_for, ask_for_memory_assignment}};
 
 fn main() {
     let commands = ask_for_with_parser(

@@ -1,6 +1,6 @@
 use std::{fs, fmt::Display};
 
-use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, ba::BA}, util::cli_utils::ask_for_with_parser};
+use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, nba::NBA}, util::cli_utils::ask_for_with_parser};
 
 fn main() {
     let input_ltl = ask_for_with_parser(
@@ -99,51 +99,51 @@ fn main() {
 
 
     // BA
-    println!("\n\n\n\n\nCreating BA");
-    let ba = BA::from_gba(simplified_gba);
+    println!("\n\n\n\n\nCreating NBA");
+    let nba = NBA::from_gba(simplified_gba);
     
-    let ba_edges = ba.delta.iter()
+    let nba_edges = nba.delta.iter()
         .flat_map(|(source, targets)| {
             targets.iter().map(move |(symcon, target)| {
                 format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, target, symcon)
             })
         }).collect::<Vec<_>>();
-    let ba_edges_str = ba_edges.join("\n");
+    let nba_edges_str = nba_edges.join("\n");
 
-    println!("BA initial state: {}", ba.initial_state);
-    println!("BA edges:");
-    println!("{}", ba_edges_str);
+    println!("NBA initial state: {}", nba.initial_state);
+    println!("NBA edges:");
+    println!("{}", nba_edges_str);
 
-    let ba_output =
-        "digraph ba {\n".to_string()
-        + &ba_edges_str
+    let nba_output =
+        "digraph nba {\n".to_string()
+        + &nba_edges_str
         + "}";
-    fs::write("graphviz_output/ba.dot", ba_output).unwrap();
+    fs::write("graphviz_output/nba.dot", nba_output).unwrap();
 
 
 
-    // Simplified BA
-    println!("\n\n\n\n\nCreating simplified BA");
-    let simplified_ba = ba.simplify();
+    // Simplified NBA
+    println!("\n\n\n\n\nCreating simplified NBA");
+    let simplified_nba = nba.simplify();
     
-    let simplified_ba_edges = simplified_ba.delta.iter()
+    let simplified_nba_edges = simplified_nba.delta.iter()
         .flat_map(|(source, targets)| {
             targets.iter().map(move |(symcon, target)| {
                 format!("\"{}\" -> \"{}\" [label = \"{}\"]", source, target, symcon)
             })
         }).collect::<Vec<_>>();
-    let simplified_ba_edges_str = simplified_ba_edges.join("\n");
+    let simplified_nba_edges_str = simplified_nba_edges.join("\n");
 
-    println!("Simplfied BA initial state: {}", simplified_ba.initial_state);
-    println!("Simplified BA edges:");
-    println!("{}", simplified_ba_edges_str);
+    println!("Simplfied NBA initial state: {}", simplified_nba.initial_state);
+    println!("Simplified NBA edges:");
+    println!("{}", simplified_nba_edges_str);
 
-    let simplified_ba_output =
-        "digraph ba_simplified {\n".to_string()
-        + &initial_state_arrow(&simplified_ba.initial_state)
-        + &simplified_ba_edges_str
+    let simplified_nba_output =
+        "digraph nba_simplified {\n".to_string()
+        + &initial_state_arrow(&simplified_nba.initial_state)
+        + &simplified_nba_edges_str
         + "}";
-    fs::write("graphviz_output/ba_simplified.dot", simplified_ba_output).unwrap();
+    fs::write("graphviz_output/ba_simplified.dot", simplified_nba_output).unwrap();
 }
 
 fn initial_state_arrow(initial_state_name: &impl Display) -> String {
