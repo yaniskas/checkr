@@ -1,6 +1,8 @@
-use std::{str::FromStr, collections::BTreeMap, io::{self, Write}};
+use std::{str::FromStr, collections::BTreeMap, io::{self, Write}, fmt::Display};
 
-use crate::{ast::{ParallelCommands, Target, Variable, Array}, model_checking::ModelCheckMemory};
+use once_cell::sync::Lazy;
+
+use crate::{ast::{ParallelCommands, Target, Variable, Array, FullAssignment}, model_checking::ModelCheckMemory, parse::ParseError, gcl};
 
 pub fn ask_for<T: FromStr>(msg: &str, failmsg: &str) -> T {
     ask_for_with_parser(msg, failmsg, FromStr::from_str)
@@ -76,4 +78,43 @@ pub fn try_parse_array(string: &str) -> Result<Vec<i64>, ()> {
     let nums: Vec<Result<i64, _>> = string.split(",").map(|e| e.trim().parse()).collect();
     if nums.iter().all(|r| r.is_ok()) { Ok(nums.into_iter().map(|r| r.unwrap()).collect()) }
     else { Err(()) }
+}
+
+pub fn initial_state_arrow(initial_state_name: &impl Display) -> String {
+    format!(
+        "invis [label = \"\", shape = none, height = 0, width = 0]\n\
+        invis -> \"{initial_state_name}\"\n"
+    )
+}
+
+pub fn initial_state_arrow_num(initial_state_name: &impl Display, num: usize) -> String {
+    format!(
+        "invis{num} [label = \"\", shape = none, height = 0, width = 0]\n\
+        invis{num} -> \"{initial_state_name}\"\n"
+    )
+}
+
+pub fn parse_or_nothing<T, E>(input_fn: impl Fn (&str) -> Result<T, E>) -> impl Fn (&str) -> Result<Option<T>, E> {
+    move |input| if input == "" {Ok(None)} else {input_fn(input).map(Some)}
+}
+
+pub fn parse_memory_assignment(src: &str) -> Result<Vec<FullAssignment>, ParseError> {
+    static PARSER: Lazy<gcl::MemoryAssignmentParser> = Lazy::new(gcl::MemoryAssignmentParser::new);
+
+    PARSER.parse(src).map_err(|e| ParseError::new(src, e))
+}
+
+pub fn parse_positive_nonzero_int(src: &str) -> Result<usize, ()> {
+    static PARSER: Lazy<gcl::IntParser> = Lazy::new(gcl::IntParser::new);
+
+    match PARSER.parse(src).map(|i| i as usize).map_err(|_| ()) {
+        ref res @ Ok(i) if i > 0 => *res,
+        _ => Err(()),
+    }
+}
+
+pub fn parse_bool(src: &str) -> Result<bool, ParseError> {
+    static PARSER: Lazy<gcl::BoolParser> = Lazy::new(gcl::BoolParser::new);
+
+    PARSER.parse(src).map_err(|e| ParseError::new(src, e))
 }

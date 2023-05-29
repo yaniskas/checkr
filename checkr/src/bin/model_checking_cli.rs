@@ -2,6 +2,10 @@ use std::fs;
 
 use checkr::{parse, pg::Determinism, model_checking::stuck_states::check_model, concurrency::ParallelProgramGraph, util::cli_utils::{ask_for_with_parser, ask_for, ask_for_memory_assignment}};
 
+
+const PG_PATH: &str = "graphviz_output/program_graph.dot";
+const TS_PATH: &str = "graphviz_output/transition_system.dot";
+
 fn main() {
     let commands = ask_for_with_parser(
         "Please enter a GCL program: ", 
@@ -22,8 +26,9 @@ fn main() {
     let graph = ParallelProgramGraph::new(det, &commands);
 
     let pg_dot = graph.dot();
-    fs::write("graphviz_output/program_graph.dot", pg_dot).unwrap();
-    println!("Wrote program graph to graphviz_output/program_graph.dot");
+    fs::create_dir_all("graphviz_output").unwrap();
+    fs::write(PG_PATH, pg_dot).unwrap();
+    println!("Wrote program graph to {PG_PATH}");
 
     let memory = ask_for_memory_assignment(commands);
 
@@ -70,6 +75,6 @@ fn main() {
         "digraph transition_system {\n".to_string()
         + &graphviz_edges_str
         + "}";
-    fs::write("graphviz_output/transition_system.dot", graphviz_output).unwrap();
-    println!("Wrote transition system to graphviz_output/transition_system.dot")
+    fs::write(TS_PATH, graphviz_output).unwrap();
+    println!("Wrote transition system to {TS_PATH}")
 }

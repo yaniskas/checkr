@@ -1,6 +1,14 @@
-use std::{fs, fmt::Display};
+use std::{fs};
 
-use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, nba::NBA}, util::cli_utils::ask_for_with_parser};
+use checkr::{model_checking::{ltl_ast::{LTL, parse_ltl}, vwaa::VWAA, gba::{GBA, GBATransition}, simplification::SimplifiableAutomaton, nba::NBA}, util::cli_utils::{ask_for_with_parser, initial_state_arrow, initial_state_arrow_num}};
+use itertools::Itertools;
+
+
+const VWAA_PATH: &str = "graphviz_output/vwaa.dot";
+const GBA_PATH: &str = "graphviz_output/gba.dot";
+const SIMPLIFIED_GBA_PATH: &str = "graphviz_output/gba_simplified.dot";
+const NBA_PATH: &str = "graphviz_output/nba.dot";
+const SIMPLIFIED_NBA_PATH: &str = "graphviz_output/nba_simplified.dot";
 
 fn main() {
     let input_ltl = ask_for_with_parser(
@@ -9,12 +17,16 @@ fn main() {
         parse_ltl
     );
 
-    let formula = dbg!(LTL::Not(Box::new(input_ltl)));
+    // let formula = dbg!(LTL::Not(Box::new(input_ltl)));
+    let formula = LTL::Not(Box::new(input_ltl));
 
-    let reduced = dbg!(formula.reduced());
-    let nn = dbg!(reduced.to_negative_normal());
+    // let reduced = dbg!(formula.reduced());
+    let reduced = formula.reduced();
+    // let nn = dbg!(reduced.to_negative_normal());
+    let nn = reduced.to_negative_normal();
     println!("\n\n\n\n\nCreating VWAA");
-    let vwaa = dbg!(VWAA::from_ltl(&nn));
+    // let vwaa = dbg!(VWAA::from_ltl(&nn));
+    let vwaa = VWAA::from_ltl(&nn);
 
     let vwaa_edges = vwaa.delta.iter()
         .flat_map(|(source, targets)| {
@@ -35,10 +47,12 @@ fn main() {
 
     let graphviz_output =
         "digraph vwaa {\n".to_string()
+        + &vwaa.initial_states.iter().enumerate().map(|(i, state)| initial_state_arrow_num(state, i)).join("\n")
         + &vwaa_edges_str
         + "}";
     fs::create_dir_all("graphviz_output").unwrap();
-    fs::write("graphviz_output/vwaa5.dot", graphviz_output).unwrap();
+    fs::write(VWAA_PATH, graphviz_output).unwrap();
+    println!("Wrote VWAA to {VWAA_PATH}");
 
 
     // GBA
@@ -60,9 +74,11 @@ fn main() {
 
     let gba_output =
         "digraph gba {\n".to_string()
+        + &initial_state_arrow(&gba.initial_state)
         + &gba_edges_str
         + "}";
-    fs::write("graphviz_output/gba3.dot", gba_output).unwrap();
+    fs::write(GBA_PATH, gba_output).unwrap();
+    println!("Wrote GBA to {GBA_PATH}");
 
 
     // Simplified GBA
@@ -82,7 +98,6 @@ fn main() {
     println!("Simplified GBA edges:");
     println!("{}", simplified_gba_edges_str);
 
-    //
     println!("Simplified GBA accepting transitions:");
     for (i, acc_tran_set) in simplified_gba.accepting_transitions.iter().enumerate() {
         println!("Set {i}");
@@ -93,12 +108,15 @@ fn main() {
 
     let simplified_gba_output =
         "digraph simplified_gba {\n".to_string()
+        + &initial_state_arrow(&simplified_gba.initial_state)
         + &simplified_gba_edges_str
         + "}";
-    fs::write("graphviz_output/gba_simplified2.dot", simplified_gba_output).unwrap();
+    fs::write(SIMPLIFIED_GBA_PATH, simplified_gba_output).unwrap();
+    println!("Wrote simplified GBA to {SIMPLIFIED_GBA_PATH}");
 
 
-    // BA
+
+    // NBA
     println!("\n\n\n\n\nCreating NBA");
     let nba = NBA::from_gba(simplified_gba);
     
@@ -116,9 +134,11 @@ fn main() {
 
     let nba_output =
         "digraph nba {\n".to_string()
+        + &initial_state_arrow(&nba.initial_state)
         + &nba_edges_str
         + "}";
-    fs::write("graphviz_output/nba.dot", nba_output).unwrap();
+    fs::write(NBA_PATH, nba_output).unwrap();
+    println!("Wrote NBA to {SIMPLIFIED_GBA_PATH}");
 
 
 
@@ -143,12 +163,6 @@ fn main() {
         + &initial_state_arrow(&simplified_nba.initial_state)
         + &simplified_nba_edges_str
         + "}";
-    fs::write("graphviz_output/ba_simplified.dot", simplified_nba_output).unwrap();
-}
-
-fn initial_state_arrow(initial_state_name: &impl Display) -> String {
-    format!(
-        "invis [label = \"\", shape = none, height = 0, width = 0]\n\
-        invis -> \"{initial_state_name}\"\n"
-    )
+    fs::write(SIMPLIFIED_NBA_PATH, simplified_nba_output).unwrap();
+    println!("Wrote simplified NBA to {SIMPLIFIED_GBA_PATH}");
 }

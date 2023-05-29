@@ -117,7 +117,7 @@ impl Conjuct for LTLConjunction {
 
 impl Display for LTLConjunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.get_components().into_iter().join(" ∧ "))
+        write!(f, "{}", self.get_components().into_iter().join(" && "))
     }
 }
 

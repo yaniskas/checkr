@@ -57,20 +57,20 @@ PossibleMemoryAssignment: Option<Vec<FullAssignment>> = ("initial" <MemoryAssign
 
 PossibleDeterminismChoice: Option<bool> = ("determinism" <Bool>)?;
 
-Bool: bool = {
+pub Bool: bool = {
     "true" => true,
     "false" => false
 }
 
 LTLSpec: LTL = "ltl" <LTL>;
 
-PossibleDepth: Option<Int> = ("depth" <Int>)?;
+PossibleDepth: Option<Int> = ("depth" <NInt>)?;
 
-MemoryAssignment: Vec<FullAssignment> = SepNonEmpty<FullAssignment, ",">;
+pub MemoryAssignment: Vec<FullAssignment> = SepNonEmpty<FullAssignment, ",">;
 
 FullAssignment: FullAssignment = {
-    <Variable> "=" <Int> => FullAssignment::VariableAssignment(<>),
-    <Array> "=" "[" <Sep<Int, ",">> "]" => FullAssignment::ArrayAssignment(<>)
+    <Variable> "=" <NInt> => FullAssignment::VariableAssignment(<>),
+    <Array> "=" "[" <Sep<NInt, ",">> "]" => FullAssignment::ArrayAssignment(<>)
 }
 
 PossiblyParallelCommands: Commands = {
@@ -193,7 +193,11 @@ RelOp: RelOp = {
 Var: String = r"[a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
 LogicalVar: String = r"_[a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
 
-Int: Int = r"[0-9]+" => Int::from_str(<>).unwrap();
+pub Int: Int = r"[0-9]+" => Int::from_str(<>).unwrap();
+NInt: Int = {
+    Int,
+    "-" <Int> => -<>,
+}
 
 
 // Security lattice
